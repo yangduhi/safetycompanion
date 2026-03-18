@@ -4,11 +4,18 @@ import re
 from pathlib import Path
 
 from src.common.config import LoadedConfig
+from src.common.paths import ProjectPaths
 from src.common.policy import load_route_policy, normalize_abbreviation_key, route_policy_for
 from src.common.runtime import read_jsonl
 from src.common.text import tokenize
 from src.retrieval.compare_ranking import compare_pair_success, select_compare_pairs
-from src.retrieval.multipage_grouping import assign_page_role, dummy_group_score, role_compatibility_bonus
+from src.retrieval.multipage_grouping import (
+    assign_page_role,
+    dummy_group_score,
+    item_anchor_clusters,
+    secondary_page_gate,
+    seed_priority_score,
+)
 from src.retrieval.query_normalization import build_query_profile
 from src.retrieval.build_indexes import load_lookup_store, search_bm25, search_dense
 from src.retrieval.fusion import reciprocal_rank_fusion
@@ -20,14 +27,15 @@ class QueryService:
     def __init__(self, root: Path, config: LoadedConfig) -> None:
         self.root = root
         self.config = config
-        self.chunks = read_jsonl(root / config.get("paths", "chunks"))
-        self.entries = read_jsonl(root / config.get("paths", "entries"))
-        self.dense_entry_store = root / "indexes" / "dense_entry" / "index.joblib"
-        self.dense_field_store = root / "indexes" / "dense_field" / "index.joblib"
-        self.bm25_store = root / "indexes" / "bm25" / "index.joblib"
-        self.abbr_lookup = load_lookup_store(root / "indexes" / "lookup" / "abbreviations.json")
-        self.index_lookup = load_lookup_store(root / "indexes" / "lookup" / "back_index.json")
-        self.calendar_lookup = load_lookup_store(root / "indexes" / "lookup" / "calendar.json")
+        self.paths = ProjectPaths(root, config)
+        self.chunks = read_jsonl(self.paths.path_from_config("chunks"))
+        self.entries = read_jsonl(self.paths.path_from_config("entries"))
+        self.dense_entry_store = self.paths.dense_entry_index
+        self.dense_field_store = self.paths.dense_field_index
+        self.bm25_store = self.paths.bm25_index
+        self.abbr_lookup = load_lookup_store(self.paths.abbreviation_lookup_store)
+        self.index_lookup = load_lookup_store(self.paths.back_index_lookup_store)
+        self.calendar_lookup = load_lookup_store(self.paths.calendar_lookup_store)
         self.route_policy = load_route_policy(root, config)
 
     def _search_dense_collection(self, query: str, top_k: int) -> tuple[list[dict], list[dict]]:
@@ -371,46 +379,96 @@ class QueryService:
                 break
         return sorted(selected, key=lambda row: row["rerank_score"], reverse=True)
 
-    def _apply_multi_page_grouping_v3(self, ranked: list[dict], query_profile: dict, top_n: int) -> list[dict]:
+    def _apply_multi_page_grouping_v3(self, ranked: list[dict], query_profile: dict, top_n: int) -> tuple[list[dict], dict]:
         rescored: list[dict] = []
         for item in ranked:
             base_score = float(item.get("rerank_score", item.get("fused_score", item.get("score", 0.0))))
             group_score, group_features = dummy_group_score(item, query_profile)
             page_role = assign_page_role(item, query_profile)
+            seed_score, seed_features = seed_priority_score(item, query_profile)
+            anchor_clusters = sorted(item_anchor_clusters(item))
             row = dict(item)
             row["page_role"] = page_role
             row["group_score"] = group_score
             row["group_features"] = group_features
+            row["anchor_clusters"] = anchor_clusters
+            row["seed_priority_score"] = seed_score
+            row["seed_priority_features"] = seed_features
             row["rerank_score"] = round(base_score + group_score, 4)
             rescored.append(row)
 
-        rescored.sort(key=lambda row: row["rerank_score"], reverse=True)
         if not rescored:
-            return []
+            return [], {
+                "seed_page_selected": None,
+                "seed_score": None,
+                "seed_role": None,
+                "accepted_secondary_pages": [],
+                "rejected_secondary_pages": [],
+                "page_role_summary": [],
+            }
 
-        seed = rescored[0]
+        rescored.sort(key=lambda row: row["rerank_score"], reverse=True)
+        seed = max(
+            rescored,
+            key=lambda row: (
+                float(row.get("seed_priority_score", 0.0)),
+                float(row.get("rerank_score", 0.0)),
+            ),
+        )
+        seed = dict(seed)
+        seed["seed_selected"] = True
+        seed["selection_rank"] = 1
         seed_role = seed.get("page_role", "detail_page")
         selected: list[dict] = [seed]
         seen_pages: set[int] = {seed.get("pdf_page")}
         seen_entries: set[str] = {seed.get("entry_id")} if seed.get("entry_id") else set()
+        accepted_secondary_debug: list[dict] = []
+        rejected_secondary_debug: list[dict] = []
+        secondary_candidates: list[dict] = []
 
-        for item in rescored[1:]:
+        for item in rescored:
             page = item.get("pdf_page")
             entry_id = item.get("entry_id")
             if page in seen_pages:
                 continue
-            role_bonus = role_compatibility_bonus(seed_role, item.get("page_role", "detail_page"))
-            if role_bonus < 0 and len(selected) >= 1:
+            accepted, gate_bonus, gate_features = secondary_page_gate(seed, item, query_profile)
+            candidate_debug = {
+                "pdf_page": page,
+                "title": item.get("title"),
+                "page_role": item.get("page_role"),
+                "anchor_clusters": item.get("anchor_clusters"),
+                "gate_bonus": gate_bonus,
+                "gate_features": gate_features,
+            }
+            if not accepted:
+                rejected_secondary_debug.append(candidate_debug)
                 continue
-            score = float(item.get("rerank_score", 0.0)) + role_bonus
+
+            score = float(item.get("rerank_score", 0.0)) + gate_bonus
             group_features = dict(item.get("group_features", {}))
-            group_features["role_compatibility_bonus"] = role_bonus
+            group_features["secondary_gate_bonus"] = gate_bonus
+            group_features["secondary_gate_features"] = gate_features
             if entry_id and entry_id in seen_entries:
                 score -= 0.2
                 group_features["duplicate_penalty"] = True
             row = dict(item)
             row["rerank_score"] = round(score, 4)
             row["group_features"] = group_features
+            row["secondary_gate_bonus"] = gate_bonus
+            row["secondary_gate_features"] = gate_features
+            secondary_candidates.append(row)
+            accepted_secondary_debug.append(candidate_debug)
+
+        secondary_candidates.sort(key=lambda row: row["rerank_score"], reverse=True)
+        for rank_offset, item in enumerate(secondary_candidates, start=2):
+            page = item.get("pdf_page")
+            entry_id = item.get("entry_id")
+            if page in seen_pages:
+                continue
+            if entry_id and entry_id in seen_entries:
+                continue
+            row = dict(item)
+            row["selection_rank"] = rank_offset
             selected.append(row)
             seen_pages.add(page)
             if entry_id:
@@ -418,7 +476,20 @@ class QueryService:
             if len(selected) >= top_n:
                 break
 
-        return selected
+        group_debug = {
+            "seed_page_selected": seed.get("pdf_page"),
+            "seed_score": seed.get("seed_priority_score"),
+            "seed_role": seed_role,
+            "seed_title": seed.get("title"),
+            "accepted_secondary_pages": [row.get("pdf_page") for row in selected[1:]],
+            "accepted_secondary_titles": [row.get("title") for row in selected[1:]],
+            "rejected_secondary_pages": [row.get("pdf_page") for row in rejected_secondary_debug],
+            "rejected_secondary_titles": [row.get("title") for row in rejected_secondary_debug],
+            "page_role_summary": [f"p.{row.get('pdf_page')}:{row.get('page_role')}" for row in selected],
+            "accepted_secondary_candidates": accepted_secondary_debug,
+            "rejected_secondary_candidates": rejected_secondary_debug,
+        }
+        return selected, group_debug
 
     def _apply_compare_policy(self, ranked: list[dict], top_n: int) -> list[dict]:
         pair = select_compare_pairs(ranked, required_targets=2, pair_limit=max(2, min(top_n, 3)))
@@ -477,10 +548,11 @@ class QueryService:
         fused = reciprocal_rank_fusion(ranked_lists, k=rrf_k)
         pre_rerank = list(fused)
         ranked = rerank(query, fused, top_n=max(final_top_n, 10), route=route, query_profile=query_profile)
+        group_debug = None
         if route == "compare":
             ranked = self._apply_compare_policy(ranked, final_top_n)
         elif route == "multi_page_lookup":
-            ranked = self._apply_multi_page_grouping_v3(ranked, query_profile=query_profile, top_n=final_top_n)
+            ranked, group_debug = self._apply_multi_page_grouping_v3(ranked, query_profile=query_profile, top_n=final_top_n)
         else:
             ranked = ranked[:final_top_n]
         return {
@@ -496,5 +568,6 @@ class QueryService:
             "fused_hits": pre_rerank,
             "ranked_hits": ranked,
             "compare_pair_success": compare_pair_success(ranked, required_targets=2) if route == "compare" else None,
+            "group_debug": group_debug,
             "policy": route_policy_for(self.route_policy, route),
         }

@@ -221,14 +221,12 @@ def _multi_page_answer(query: str, route: str, selected: list[dict]) -> dict:
             "route_name": route,
         }
 
-    page_list = [
-        f"- p.{item.get('pdf_page')}: {item.get('title', 'Untitled')}"
-        for item in selected
-    ]
-    page_roles = [
-        f"- p.{item.get('pdf_page')}: {item.get('page_role', 'detail_page')}"
-        for item in selected
-    ]
+    page_list = []
+    page_roles = []
+    for item in selected:
+        seed_marker = " [seed]" if int(item.get("selection_rank", 99) or 99) == 1 else ""
+        page_list.append(f"- p.{item.get('pdf_page')}: {item.get('title', 'Untitled')}{seed_marker}")
+        page_roles.append(f"- p.{item.get('pdf_page')}: {item.get('page_role', 'detail_page')}")
     summary_lines = [
         f"- {item.get('title', 'Untitled')}: {item.get('evidence_text', '') or item.get('text', '')[:160]}"
         for item in selected[:3]

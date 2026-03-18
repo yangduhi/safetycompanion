@@ -74,7 +74,9 @@ def run_evaluation(ctx: RunContext, baseline_label: str | None = None) -> Workfl
     multi_page_group_details_path = ctx.output_path("multi_page_group_details.csv")
     dummy_hardslice_eval_path = ctx.output_path("dummy_hardslice_eval.md")
     multi_page_group_details_v2_path = ctx.output_path("multi_page_group_details_v2.csv")
+    multi_page_group_details_v4_path = ctx.output_path("multi_page_group_details_v4.csv")
     multi_page_dummy_eval_path = ctx.output_path("multi_page_dummy_eval.md")
+    multi_page_dummy_eval_v3_path = ctx.output_path("multi_page_dummy_eval_v3.md")
     recommendation_eval_path = ctx.output_path("recommendation_eval.md")
     compare_eval_path = ctx.output_path("compare_eval.md")
     compare_pair_details_path = ctx.output_path("compare_pair_details.csv")
@@ -84,6 +86,7 @@ def run_evaluation(ctx: RunContext, baseline_label: str | None = None) -> Workfl
     reranker_ablation_path = ctx.output_path("reranker_ablation.md")
     error_taxonomy_report_path = ctx.output_path("error_taxonomy_report.md")
     error_taxonomy_report_v3_path = ctx.output_path("error_taxonomy_report_v3.md")
+    error_taxonomy_report_v4_path = ctx.output_path("error_taxonomy_report_v4.md")
     compare_regression_report_path = ctx.output_path("compare_regression_report.md")
     error_analysis_path = ctx.output_path("error_analysis.csv")
     failure_cases_path = ctx.output_path("failure_cases.jsonl")
@@ -140,6 +143,8 @@ def run_evaluation(ctx: RunContext, baseline_label: str | None = None) -> Workfl
     write_detail_csv(compare_pair_details_path, [row for row in all_retrieval_rows if row.get("question_type") == "compare"])
     write_detail_csv(multi_page_group_details_path, multi_page_rows)
     write_detail_csv(multi_page_group_details_v2_path, dummy_rows)
+    write_detail_csv(multi_page_group_details_v4_path, dummy_rows)
+    write_retrieval_slice_markdown(multi_page_dummy_eval_v3_path, "Multi Page Dummy Eval V3", dummy_rows)
 
     all_grounding_rows = answer_details + adversarial_answer_details + multi_page_hard_answer_details
     compare_grounding_rows = [row for row in all_grounding_rows if row.get("question_type") == "compare"]
@@ -166,6 +171,7 @@ def run_evaluation(ctx: RunContext, baseline_label: str | None = None) -> Workfl
     taxonomy_rows = build_error_taxonomy(all_retrieval_rows, all_grounding_rows)
     write_text(error_taxonomy_report_path, error_taxonomy_markdown(taxonomy_rows))
     write_text(error_taxonomy_report_v3_path, error_taxonomy_markdown(taxonomy_rows))
+    write_text(error_taxonomy_report_v4_path, error_taxonomy_markdown(taxonomy_rows))
     write_text(
         compare_regression_report_path,
         markdown_from_metrics(
@@ -212,7 +218,9 @@ def run_evaluation(ctx: RunContext, baseline_label: str | None = None) -> Workfl
         multi_page_eval_path,
         multi_page_group_details_path,
         multi_page_group_details_v2_path,
+        multi_page_group_details_v4_path,
         multi_page_dummy_eval_path,
+        multi_page_dummy_eval_v3_path,
         dummy_hardslice_eval_path,
         recommendation_eval_path,
         compare_eval_path,
@@ -223,6 +231,7 @@ def run_evaluation(ctx: RunContext, baseline_label: str | None = None) -> Workfl
         reranker_ablation_path,
         error_taxonomy_report_path,
         error_taxonomy_report_v3_path,
+        error_taxonomy_report_v4_path,
         compare_regression_report_path,
         error_analysis_path,
         failure_cases_path,

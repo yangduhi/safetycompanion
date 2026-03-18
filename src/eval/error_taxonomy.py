@@ -23,8 +23,19 @@ def build_error_taxonomy(retrieval_details: list[dict], grounding_details: list[
             top_title = str(row.get("top_result_title") or "").lower()
             question = str(row.get("question") or "").lower()
             if any(token in question for token in ["thor", "dummy", "atd", "landscape"]):
-                if "ncap" in top_title:
+                seed_page = row.get("seed_page_selected")
+                expected_pages = set(row.get("expected_pdf_pages") or [])
+                top_role = str(row.get("top_result_role") or "")
+                rejected_secondary_pages = str(row.get("rejected_secondary_pages") or "")
+                accepted_secondary_pages = str(row.get("accepted_secondary_pages") or "")
+                if seed_page and seed_page not in expected_pages:
+                    failure_type = "MULTI_PAGE_COLLAPSE__SEED_PRIORITY_MISS"
+                elif "ncap" in top_title:
                     failure_type = "MULTI_PAGE_COLLAPSE__UNRELATED_PAGE_INTRUSION"
+                elif top_role in {"training_page", "reference_page"}:
+                    failure_type = "MULTI_PAGE_COLLAPSE__ROLE_ASSIGNMENT_FAIL"
+                elif rejected_secondary_pages and not accepted_secondary_pages:
+                    failure_type = "MULTI_PAGE_COLLAPSE__SECONDARY_PAGE_MISS"
                 else:
                     failure_type = "MULTI_PAGE_COLLAPSE__DUMMY_TOPIC_MERGE_FAIL"
             elif top_title and "current dummy landscape" in top_title:

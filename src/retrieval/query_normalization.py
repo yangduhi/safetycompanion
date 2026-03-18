@@ -24,6 +24,10 @@ KOREAN_EXPANSIONS = {
     "더미": ["dummy", "atd"],
     "정책": ["policy"],
     "브리핑": ["briefing"],
+    "행사": ["event", "conference"],
+    "이벤트": ["event", "conference"],
+    "세션": ["session", "event"],
+    "업데이트": ["update", "event"],
     "입문": ["introduction", "basics"],
     "지식 페이지": ["knowledge page", "knowledge"],
     "핵심": ["key", "core"],
@@ -49,6 +53,7 @@ EVENT_ALIASES = {
     "dialogue",
     "week",
     "conference",
+    "session",
 }
 
 EXACT_ANCHOR_ALIASES = {
@@ -64,6 +69,9 @@ DUMMY_CLUSTER_RULES = {
     "ATD_CLUSTER": ["atd", "anthropomorphic test device"],
     "DUMMY_LANDSCAPE_CLUSTER": ["dummy", "landscape", "current dummy landscape", "dummy landscape"],
 }
+
+
+STRONG_DUMMY_CLUSTERS = {"THOR_CLUSTER", "HIII_CLUSTER", "ATD_CLUSTER"}
 
 
 def collapse_spaced_acronyms(text: str) -> str:
@@ -139,6 +147,27 @@ def extract_dummy_anchor_clusters(text: str) -> list[str]:
     return sorted(set(clusters))
 
 
+def infer_dummy_query_mode(text: str, clusters: list[str]) -> str:
+    lowered = text.lower()
+    has_landscape = any(token in lowered for token in ["landscape", "current dummy landscape"])
+    has_training = any(token in lowered for token in ["training", "seminar", "course", "education", "lecture"])
+    cluster_set = set(clusters)
+    has_specific_anchor = bool(cluster_set & STRONG_DUMMY_CLUSTERS)
+    has_generic_dummy = "DUMMY_LANDSCAPE_CLUSTER" in cluster_set or "dummy" in lowered
+
+    if has_landscape:
+        return "landscape"
+    if has_specific_anchor and not has_generic_dummy:
+        return "specific_anchor"
+    if has_specific_anchor and has_generic_dummy:
+        return "mixed"
+    if has_training:
+        return "training"
+    if has_generic_dummy:
+        return "generic_dummy"
+    return "generic"
+
+
 def _prepare_compare_text(text: str) -> str:
     prepared = text
     prepared = prepared.replace("세미나와", "세미나 와 ")
@@ -203,6 +232,8 @@ def build_query_profile(query: str) -> dict:
         multi_page_hint = True
     dummy_anchor_hints = extract_dummy_anchor_hints(alias_query)
     dummy_anchor_clusters = extract_dummy_anchor_clusters(alias_query)
+    dummy_query_mode = infer_dummy_query_mode(alias_query, dummy_anchor_clusters)
+    dummy_training_hint = any(token in alias_query.lower() for token in ["training", "seminar", "course", "교육", "세미나", "과정", "강의"])
     if not multi_page_hint and dummy_anchor_clusters and (strong_grouping_request_hint or related_page_hint):
         multi_page_hint = True
     if not multi_page_hint and len(dummy_anchor_clusters) >= 2:
@@ -223,6 +254,8 @@ def build_query_profile(query: str) -> dict:
         "exact_anchors": exact_anchors,
         "dummy_anchor_hints": dummy_anchor_hints,
         "dummy_anchor_clusters": dummy_anchor_clusters,
+        "dummy_query_mode": dummy_query_mode,
+        "dummy_training_hint": dummy_training_hint,
         "grouping_request_hint": strong_grouping_request_hint or related_page_hint,
         "strong_grouping_request_hint": strong_grouping_request_hint,
         "related_page_hint": related_page_hint,

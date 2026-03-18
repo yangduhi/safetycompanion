@@ -27,6 +27,7 @@ def evaluate_retrieval(gold_questions: list[dict], retrieve: Callable[[str], dic
         trace = retrieve(question["question"])
         results = trace["ranked_hits"][:10]
         pre_rerank = trace.get("fused_hits", [])[:10]
+        group_debug = trace.get("group_debug") or {}
         expected_pages = set(question.get("expected_pdf_pages", []))
         expected_titles = question.get("expected_titles", [])
         top1 = results[:1]
@@ -60,9 +61,18 @@ def evaluate_retrieval(gold_questions: list[dict], retrieve: Callable[[str], dic
                 "page_hit_top10": bool(expected_pages & top10_pages),
                 "top_result_title": top1_titles[0] if top1_titles else None,
                 "top_result_page": next(iter(top1_pages), None) if top1_pages else None,
+                "top_result_role": top1[0].get("page_role") if top1 else None,
                 "pre_rerank_top1_hit": pre_top1_hit,
                 "rerank_improved_top1": top1_hit and not pre_top1_hit,
                 "compare_pair_success": trace.get("compare_pair_success"),
+                "seed_page_selected": group_debug.get("seed_page_selected"),
+                "seed_score": group_debug.get("seed_score"),
+                "seed_role": group_debug.get("seed_role"),
+                "accepted_secondary_pages": "|".join(str(page) for page in group_debug.get("accepted_secondary_pages", [])),
+                "accepted_secondary_titles": " | ".join(str(title) for title in group_debug.get("accepted_secondary_titles", [])),
+                "rejected_secondary_pages": "|".join(str(page) for page in group_debug.get("rejected_secondary_pages", [])),
+                "rejected_secondary_titles": " | ".join(str(title) for title in group_debug.get("rejected_secondary_titles", [])),
+                "page_role_summary": " | ".join(str(item) for item in group_debug.get("page_role_summary", [])),
             }
         )
 
