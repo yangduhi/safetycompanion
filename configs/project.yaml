@@ -18,6 +18,7 @@ paths:
   graph_edges: data/graph/edges.jsonl
   gold_questions: data/eval/gold_questions.jsonl
   adversarial_questions: data/eval/adversarial_questions.jsonl
+  multi_page_hard_questions: data/eval/multi_page_hard_questions.jsonl
   route_field_priority: configs/route_field_priority.yaml
 
 page_taxonomy:

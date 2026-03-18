@@ -23,13 +23,22 @@ def build_error_taxonomy(retrieval_details: list[dict], grounding_details: list[
             top_title = str(row.get("top_result_title") or "").lower()
             question = str(row.get("question") or "").lower()
             if any(token in question for token in ["thor", "dummy", "atd", "landscape"]):
-                failure_type = "MULTI_PAGE_COLLAPSE__DUMMY_TOPIC_MERGE_FAIL"
+                if "ncap" in top_title:
+                    failure_type = "MULTI_PAGE_COLLAPSE__UNRELATED_PAGE_INTRUSION"
+                else:
+                    failure_type = "MULTI_PAGE_COLLAPSE__DUMMY_TOPIC_MERGE_FAIL"
             elif top_title and "current dummy landscape" in top_title:
                 failure_type = "MULTI_PAGE_COLLAPSE__MISSING_SECONDARY_PAGE"
             else:
                 failure_type = "MULTI_PAGE_COLLAPSE__WRONG_PAGE_GROUPING"
         elif EXACT_ANCHOR_PATTERN.search(question) and not row.get("top10_hit"):
-            failure_type = "ANCHOR_NORMALIZATION_FAIL"
+            question_lower = str(question).lower()
+            if any(token in question_lower for token in ["dummy", "thor", "atd", "landscape"]):
+                failure_type = "ANCHOR_NORMALIZATION_FAIL__DUMMY_ALIAS"
+            elif re.search(r"(fmvss\d|gtr\d)", question_lower):
+                failure_type = "ANCHOR_NORMALIZATION_FAIL__CODE_STYLE"
+            else:
+                failure_type = "ANCHOR_NORMALIZATION_FAIL__TOKEN_SPLIT"
         elif row.get("top10_hit") and not row.get("top1_hit"):
             failure_type = "DISAMBIGUATION_FAIL"
         elif not row.get("top10_hit") and row.get("route_name") == "fallback_general":

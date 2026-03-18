@@ -58,6 +58,13 @@ EXACT_ANCHOR_ALIASES = {
 
 DUMMY_ANCHORS = {"THOR", "HIII", "HYBRID III", "SID-IIS", "WORLDSID", "ATD", "DUMMY", "LANDSCAPE"}
 
+DUMMY_CLUSTER_RULES = {
+    "THOR_CLUSTER": ["thor", "thor 50", "thor 5"],
+    "HIII_CLUSTER": ["hiii", "hybrid iii", "hybrid-iii", "hybrid 3"],
+    "ATD_CLUSTER": ["atd", "anthropomorphic test device"],
+    "DUMMY_LANDSCAPE_CLUSTER": ["dummy", "landscape", "current dummy landscape", "dummy landscape"],
+}
+
 
 def collapse_spaced_acronyms(text: str) -> str:
     pattern = re.compile(r"\b(?:[A-Za-z]\s+){2,}[A-Za-z]\b")
@@ -123,6 +130,15 @@ def extract_dummy_anchor_hints(text: str) -> list[str]:
     return sorted(set(hints))
 
 
+def extract_dummy_anchor_clusters(text: str) -> list[str]:
+    lowered = text.lower()
+    clusters: list[str] = []
+    for cluster, aliases in DUMMY_CLUSTER_RULES.items():
+        if any(alias in lowered for alias in aliases):
+            clusters.append(cluster)
+    return sorted(set(clusters))
+
+
 def _prepare_compare_text(text: str) -> str:
     prepared = text
     prepared = prepared.replace("세미나와", "세미나 와 ")
@@ -180,10 +196,16 @@ def build_query_profile(query: str) -> dict:
         bilingual_query_parts.append(" ".join(alias_expansions))
     bilingual_query = " ".join(part for part in bilingual_query_parts if part).strip()
     exact_anchors = extract_exact_anchors(alias_query)
-    multi_page_hint = any(token in alias_query for token in ["두 개", "2개", "함께", "여러 페이지"])
+    grouping_request_hint = any(token in alias_query for token in ["두 개", "2개", "함께", "여러 페이지", "정리해줘", "모아서", "모아", "모여", "같이 나오는", "관련 페이지"])
+    multi_page_hint = grouping_request_hint
     if not multi_page_hint and any(anchor in {"THOR", "HIII", "ATD"} for anchor in exact_anchors) and ("더미" in query or "dummy" in bilingual_query.lower()):
         multi_page_hint = True
     dummy_anchor_hints = extract_dummy_anchor_hints(alias_query)
+    dummy_anchor_clusters = extract_dummy_anchor_clusters(alias_query)
+    if not multi_page_hint and dummy_anchor_clusters and grouping_request_hint:
+        multi_page_hint = True
+    if not multi_page_hint and len(dummy_anchor_clusters) >= 2:
+        multi_page_hint = True
     return {
         "original_query": query,
         "collapsed_query": collapsed,
@@ -199,4 +221,6 @@ def build_query_profile(query: str) -> dict:
         "event_hint": is_event_hint(bilingual_query),
         "exact_anchors": exact_anchors,
         "dummy_anchor_hints": dummy_anchor_hints,
+        "dummy_anchor_clusters": dummy_anchor_clusters,
+        "grouping_request_hint": grouping_request_hint,
     }

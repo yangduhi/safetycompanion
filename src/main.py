@@ -253,6 +253,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
     calendar_entries = read_jsonl(ctx.path_from_config("calendar_entries"))
     gold_questions = read_jsonl(ctx.path_from_config("gold_questions"))
     adversarial_questions = read_jsonl(ctx.path_from_config("adversarial_questions"))
+    multi_page_hard_questions = read_jsonl(ctx.path_from_config("multi_page_hard_questions"))
 
     service = QueryService(ROOT, ctx.config)
 
@@ -271,10 +272,14 @@ def cmd_eval(args: argparse.Namespace) -> int:
     answer_metrics, answer_details = evaluate_answers(gold_questions, answer_query)
     adversarial_retrieval_metrics, adversarial_retrieval_details = evaluate_retrieval(adversarial_questions, retrieve)
     adversarial_answer_metrics, adversarial_answer_details = evaluate_answers(adversarial_questions, answer_query)
+    multi_page_hard_retrieval_metrics, multi_page_hard_retrieval_details = evaluate_retrieval(multi_page_hard_questions, retrieve)
+    multi_page_hard_answer_metrics, multi_page_hard_answer_details = evaluate_answers(multi_page_hard_questions, answer_query)
     metrics.update(retrieval_metrics)
     metrics.update(answer_metrics)
     metrics.update({f"adversarial__{key}": value for key, value in adversarial_retrieval_metrics.items()})
     metrics.update({f"adversarial__{key}": value for key, value in adversarial_answer_metrics.items()})
+    metrics.update({f"multi_page_hard__{key}": value for key, value in multi_page_hard_retrieval_metrics.items()})
+    metrics.update({f"multi_page_hard__{key}": value for key, value in multi_page_hard_answer_metrics.items()})
 
     summary_path = ctx.output_path("eval_summary.md")
     retrieval_report_path = ctx.output_path("retrieval_report.md")
@@ -290,6 +295,8 @@ def cmd_eval(args: argparse.Namespace) -> int:
     multi_page_eval_path = ctx.output_path("multi_page_eval.md")
     multi_page_group_details_path = ctx.output_path("multi_page_group_details.csv")
     dummy_hardslice_eval_path = ctx.output_path("dummy_hardslice_eval.md")
+    multi_page_group_details_v2_path = ctx.output_path("multi_page_group_details_v2.csv")
+    multi_page_dummy_eval_path = ctx.output_path("multi_page_dummy_eval.md")
     recommendation_eval_path = ctx.output_path("recommendation_eval.md")
     compare_eval_path = ctx.output_path("compare_eval.md")
     compare_pair_details_path = ctx.output_path("compare_pair_details.csv")
@@ -298,6 +305,8 @@ def cmd_eval(args: argparse.Namespace) -> int:
     exact_anchor_eval_path = ctx.output_path("exact_anchor_eval.md")
     reranker_ablation_path = ctx.output_path("reranker_ablation.md")
     error_taxonomy_report_path = ctx.output_path("error_taxonomy_report.md")
+    error_taxonomy_report_v3_path = ctx.output_path("error_taxonomy_report_v3.md")
+    compare_regression_report_path = ctx.output_path("compare_regression_report.md")
     error_analysis_path = ctx.output_path("error_analysis.csv")
     failure_cases_path = ctx.output_path("failure_cases.jsonl")
 
@@ -309,13 +318,13 @@ def cmd_eval(args: argparse.Namespace) -> int:
     write_text(retrieval_report_path, markdown_from_metrics("Retrieval Report", retrieval_report_metrics))
     write_text(citation_report_path, markdown_from_metrics("Citation Report", citation_report_metrics))
     write_text(grounding_report_path, markdown_from_metrics("Grounding Report", grounding_report_metrics))
-    write_detail_csv(retrieval_details_path, retrieval_details + adversarial_retrieval_details)
+    write_detail_csv(retrieval_details_path, retrieval_details + adversarial_retrieval_details + multi_page_hard_retrieval_details)
     write_filtered_detail_csv(retrieval_top1_details_path, retrieval_details + adversarial_retrieval_details, "top1_hit", True)
     write_filtered_detail_csv(retrieval_top3_details_path, retrieval_details + adversarial_retrieval_details, "top3_hit", True)
-    write_detail_csv(citation_details_path, answer_details)
-    write_detail_csv(grounding_details_path, answer_details + adversarial_answer_details)
+    write_detail_csv(citation_details_path, answer_details + multi_page_hard_answer_details)
+    write_detail_csv(grounding_details_path, answer_details + adversarial_answer_details + multi_page_hard_answer_details)
 
-    all_retrieval_rows = retrieval_details + adversarial_retrieval_details
+    all_retrieval_rows = retrieval_details + adversarial_retrieval_details + multi_page_hard_retrieval_details
     korean_rows = [row for row in all_retrieval_rows if contains_korean(row.get("question"))]
     hard_rows = [row for row in all_retrieval_rows if row.get("difficulty") == "hard"]
     multi_page_rows = [row for row in all_retrieval_rows if row.get("question_type") == "multi_page_lookup"]
@@ -328,6 +337,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
     write_retrieval_slice_markdown(hard_route_eval_path, "Hard Route Eval", hard_rows)
     write_retrieval_slice_markdown(multi_page_eval_path, "Multi Page Eval", multi_page_rows)
     write_retrieval_slice_markdown(dummy_hardslice_eval_path, "Dummy Hard Slice Eval", dummy_rows)
+    write_retrieval_slice_markdown(multi_page_dummy_eval_path, "Multi Page Dummy Eval", dummy_rows)
     write_retrieval_slice_markdown(recommendation_eval_path, "Recommendation Eval", recommendation_rows)
     write_retrieval_slice_markdown(compare_eval_path, "Compare Eval", compare_rows)
     write_retrieval_slice_markdown(event_lookup_eval_path, "Event Lookup Eval", event_rows)
@@ -335,8 +345,9 @@ def cmd_eval(args: argparse.Namespace) -> int:
     write_reranker_ablation(reranker_ablation_path, all_retrieval_rows)
     write_detail_csv(compare_pair_details_path, [row for row in all_retrieval_rows if row.get("question_type") == "compare"])
     write_detail_csv(multi_page_group_details_path, multi_page_rows)
+    write_detail_csv(multi_page_group_details_v2_path, dummy_rows)
 
-    all_grounding_rows = answer_details + adversarial_answer_details
+    all_grounding_rows = answer_details + adversarial_answer_details + multi_page_hard_answer_details
     compare_grounding_rows = [row for row in all_grounding_rows if row.get("question_type") == "compare"]
     write_text(compare_grounding_report_path, markdown_from_metrics("Compare Grounding Report", {
         "compare_grounded_success_rate": round(sum(1 for row in compare_grounding_rows if row.get("grounded_success")) / len(compare_grounding_rows), 4) if compare_grounding_rows else 0.0,
@@ -344,6 +355,11 @@ def cmd_eval(args: argparse.Namespace) -> int:
     }))
     taxonomy_rows = build_error_taxonomy(all_retrieval_rows, all_grounding_rows)
     write_text(error_taxonomy_report_path, error_taxonomy_markdown(taxonomy_rows))
+    write_text(error_taxonomy_report_v3_path, error_taxonomy_markdown(taxonomy_rows))
+    write_text(compare_regression_report_path, markdown_from_metrics("Compare Regression Report", {
+        "compare_top1_hit_rate": round(sum(1 for row in compare_rows if row.get("top1_hit")) / len(compare_rows), 4) if compare_rows else 0.0,
+        "compare_grounded_success_rate": round(sum(1 for row in compare_grounding_rows if row.get("grounded_success")) / len(compare_grounding_rows), 4) if compare_grounding_rows else 0.0,
+    }))
 
     write_text(error_analysis_path, "metric,value\n" + "\n".join(f"{key},{value}" for key, value in metrics.items()) + "\n")
     failures = [
@@ -379,6 +395,8 @@ def cmd_eval(args: argparse.Namespace) -> int:
             hard_route_eval_path,
             multi_page_eval_path,
             multi_page_group_details_path,
+            multi_page_group_details_v2_path,
+            multi_page_dummy_eval_path,
             dummy_hardslice_eval_path,
             recommendation_eval_path,
             compare_eval_path,
@@ -388,6 +406,8 @@ def cmd_eval(args: argparse.Namespace) -> int:
             exact_anchor_eval_path,
             reranker_ablation_path,
             error_taxonomy_report_path,
+            error_taxonomy_report_v3_path,
+            compare_regression_report_path,
             error_analysis_path,
             failure_cases_path,
             *baseline_artifacts,

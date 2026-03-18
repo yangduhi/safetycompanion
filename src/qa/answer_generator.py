@@ -206,6 +206,80 @@ def _compare_answer(query: str, route: str, selected: list[dict]) -> dict:
     }
 
 
+def _multi_page_answer(query: str, route: str, selected: list[dict]) -> dict:
+    if not selected:
+        return {
+            "query": query,
+            "route": route,
+            "answer": "문서상 확인 불가",
+            "evidence": [],
+            "selected_field": None,
+            "evidence_count": 0,
+            "span_present": False,
+            "template_answer_used": True,
+            "multi_page_used": False,
+            "route_name": route,
+        }
+
+    page_list = [
+        f"- p.{item.get('pdf_page')}: {item.get('title', 'Untitled')}"
+        for item in selected
+    ]
+    page_roles = [
+        f"- p.{item.get('pdf_page')}: {item.get('page_role', 'detail_page')}"
+        for item in selected
+    ]
+    summary_lines = [
+        f"- {item.get('title', 'Untitled')}: {item.get('evidence_text', '') or item.get('text', '')[:160]}"
+        for item in selected[:3]
+    ]
+    answer = "\n".join(
+        [
+            f"질의 경로: {route}",
+            "",
+            "관련 페이지:",
+            *page_list,
+            "",
+            "페이지 역할:",
+            *page_roles,
+            "",
+            "통합 요약:",
+            *summary_lines,
+        ]
+    )
+    evidence = [
+        {
+            "title": item.get("title"),
+            "pdf_page": item.get("pdf_page"),
+            "printed_page": item.get("printed_page"),
+            "chunk_id": item.get("chunk_id"),
+            "field_name": item.get("field_name"),
+            "text": item.get("text", "")[:400],
+            "evidence_text": item.get("evidence_text", ""),
+            "evidence_field": item.get("evidence_field"),
+            "evidence_start": item.get("evidence_start"),
+            "evidence_end": item.get("evidence_end"),
+            "evidence_page": item.get("evidence_page"),
+            "evidence_confidence": item.get("evidence_confidence"),
+            "entry_id": item.get("entry_id"),
+            "page_role": item.get("page_role"),
+        }
+        for item in selected
+    ]
+    return {
+        "query": query,
+        "route": route,
+        "answer": answer,
+        "evidence": evidence,
+        "selected_field": selected[0].get("field_name"),
+        "evidence_count": len(evidence),
+        "span_present": all(item.get("evidence_text") for item in evidence),
+        "template_answer_used": True,
+        "multi_page_used": True,
+        "route_name": route,
+    }
+
+
 def build_grounded_answer(query: str, route: str, candidates: Iterable[dict], route_policy: dict | None = None) -> dict:
     route = "compare" if route == "compare_or_recommend" else route
     ranked = list(candidates)
@@ -238,6 +312,8 @@ def build_grounded_answer(query: str, route: str, candidates: Iterable[dict], ro
         return _abbreviation_answer(query, route, selected)
     if route == "compare":
         return _compare_answer(query, route, selected)
+    if route == "multi_page_lookup":
+        return _multi_page_answer(query, route, selected)
 
     top = selected[0]
     evidence_count = len(selected)

@@ -41,3 +41,9 @@ def test_event_paraphrase_route():
 def test_exact_anchor_normalization():
     profile = build_query_profile("fmvss305a page?")
     assert "FMVSS 305A" in profile["normalized_anchor_query"]
+
+
+def test_dummy_anchor_clusters():
+    profile = build_query_profile("THOR와 HIII 관련 페이지를 함께 정리해줘")
+    assert "THOR_CLUSTER" in profile["dummy_anchor_clusters"]
+    assert "HIII_CLUSTER" in profile["dummy_anchor_clusters"]

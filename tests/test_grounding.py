@@ -125,3 +125,45 @@ def test_compare_route_builds_pair_answer():
     )
     assert "비교 대상 1" in answer["answer"]
     assert "비교 대상 2" in answer["answer"]
+
+
+def test_multi_page_answer_contains_page_roles():
+    route_policy = {
+        "multi_page_lookup": {
+            "preferred_fields": ["page_summary", "overview"],
+            "deterministic_template": False,
+            "min_evidence": 2,
+            "min_distinct_entries": 2,
+        }
+    }
+    answer = build_grounded_answer(
+        "THOR 관련 페이지를 정리해줘",
+        "multi_page_lookup",
+        [
+            {
+                "title": "Current Dummy Landscape",
+                "pdf_page": 129,
+                "printed_page": 129,
+                "chunk_id": "p129",
+                "entry_id": "entry_129",
+                "field_name": "page_summary",
+                "text": "Current Dummy Landscape overview",
+                "page_role": "landscape_page",
+                "score": 1.0,
+            },
+            {
+                "title": "THOR 50 % Male",
+                "pdf_page": 136,
+                "printed_page": 136,
+                "chunk_id": "p136",
+                "entry_id": "entry_136",
+                "field_name": "overview",
+                "text": "THOR injury criteria",
+                "page_role": "criteria_page",
+                "score": 1.0,
+            },
+        ],
+        route_policy=route_policy,
+    )
+    assert "관련 페이지:" in answer["answer"]
+    assert "페이지 역할:" in answer["answer"]

@@ -8,6 +8,7 @@ from src.common.policy import load_route_policy, normalize_abbreviation_key, rou
 from src.common.runtime import read_jsonl
 from src.common.text import tokenize
 from src.retrieval.compare_ranking import compare_pair_success, select_compare_pairs
+from src.retrieval.multipage_grouping import assign_page_role, dummy_group_score
 from src.retrieval.query_normalization import build_query_profile
 from src.retrieval.build_indexes import load_lookup_store, search_bm25, search_dense
 from src.retrieval.fusion import reciprocal_rank_fusion
@@ -345,6 +346,36 @@ class QueryService:
                 break
         return sorted(selected, key=lambda row: row["rerank_score"], reverse=True)
 
+    def _apply_multi_page_grouping_v3(self, ranked: list[dict], query_profile: dict, top_n: int) -> list[dict]:
+        selected: list[dict] = []
+        seen_pages: set[int] = set()
+        seen_entries: set[str] = set()
+        for item in ranked:
+            page = item.get("pdf_page")
+            entry_id = item.get("entry_id")
+            base_score = float(item.get("rerank_score", item.get("fused_score", item.get("score", 0.0))))
+            group_score, group_features = dummy_group_score(item, query_profile)
+            page_role = assign_page_role(item, query_profile)
+
+            if page in seen_pages:
+                continue
+            if entry_id and entry_id in seen_entries:
+                group_score -= 0.2
+                group_features["duplicate_penalty"] = True
+
+            row = dict(item)
+            row["page_role"] = page_role
+            row["group_score"] = group_score
+            row["group_features"] = group_features
+            row["rerank_score"] = round(base_score + group_score, 4)
+            selected.append(row)
+            seen_pages.add(page)
+            if entry_id:
+                seen_entries.add(entry_id)
+            if len(selected) >= top_n:
+                break
+        return sorted(selected, key=lambda row: row["rerank_score"], reverse=True)
+
     def _apply_compare_policy(self, ranked: list[dict], top_n: int) -> list[dict]:
         pair = select_compare_pairs(ranked, required_targets=2, pair_limit=max(2, min(top_n, 3)))
         if compare_pair_success(pair, required_targets=2):
@@ -405,7 +436,7 @@ class QueryService:
         if route == "compare":
             ranked = self._apply_compare_policy(ranked, final_top_n)
         elif route == "multi_page_lookup":
-            ranked = self._apply_multi_page_grouping_v2(ranked, query_profile=query_profile, top_n=final_top_n)
+            ranked = self._apply_multi_page_grouping_v3(ranked, query_profile=query_profile, top_n=final_top_n)
         else:
             ranked = ranked[:final_top_n]
         return {
