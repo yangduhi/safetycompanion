@@ -1,108 +1,71 @@
 # Task Checklist
 
-## 사용 규칙
-- 각 항목은 완료 시 체크한다.
-- 차단 이슈가 생기면 `outputs/<run_id>/blocking_issues.md`에 기록한다.
-- 미결정 항목은 `spec.md`의 결정 등록부 상태를 먼저 확인한다.
+이 문서는 초기 구축 체크리스트가 아니라, 현재 구현된 프로젝트를 유지·개선하기 위한 운영 체크리스트다.
 
-## Current Improvement Cycle
-- [ ] `docs/improvement_plan_v2.md` 기준으로 현재 반복 우선순위 확인
-- [ ] `baseline_v1` freeze 완료
-- [ ] retrieval / citation / grounding evaluator 분리 완료
-- [ ] easy / medium / hard difficulty 리포트 생성 확인
+## 1. 현재 완료된 기반
 
-## Phase 0. Preflight
-- [ ] `data/SafetyCompanion-2026.pdf` 존재 확인
-- [ ] `python --version` 통과
-- [ ] `pdfinfo data/SafetyCompanion-2026.pdf` 통과
-- [ ] `pdftotext -f 1 -l 1 data/SafetyCompanion-2026.pdf -` 통과
-- [ ] `outputs/<run_id>/preflight_report.md` 작성
+- [x] `preflight -> ingest -> build-indexes -> query -> eval` 기본 CLI 경로 구현
+- [x] `src/cli`, `src/workflows`, `src/common/paths.py` 기반 구조 리팩터링 완료
+- [x] `data/parsed`, `data/processed`, `indexes`, `outputs` 산출물 체계 유지
+- [x] route policy 기반 retrieval / grounded answer 경로 구현
+- [x] evaluation 리포트 및 baseline snapshot 생성 경로 구현
+- [x] 테스트 스위트로 routing / grounding / path contract 검증
+- [x] 상위 문서와 운영 문서 재정비
 
-## Phase 1. 원본 감사
-- [ ] `docs/source_document_profile.md` 작성
-- [ ] `docs/rag_scope.md` 작성
-- [ ] `data/raw/source_page_map.jsonl` 작성
-- [ ] `outputs/<run_id>/source_audit_report.md` 작성
-- [ ] `pdf_page`/`printed_page` 정책 확정
+## 2. 변경 후 기본 검증 체크리스트
 
-## Phase 2. 저장소 계약 고정
-- [ ] `README.md` 최신화
-- [ ] `spec.md` 최신화
-- [ ] `plan.md` 최신화
-- [ ] `tasks.md` 최신화
-- [ ] `configs/project.yaml` 작성
-- [ ] `docs/data_contract.md` 작성
-- [ ] `docs/acceptance_criteria.md` 작성
-- [ ] `docs/run_manifest.schema.json` 작성
-- [ ] `data/eval/gold_questions.jsonl` 작성
+모든 코드 변경 후 최소 아래 항목을 확인한다.
 
-## Phase 3. PDF 구조 복원
-- [ ] `data/parsed/page_manifest.jsonl` 생성
-- [ ] `data/parsed/page_blocks.jsonl` 생성
-- [ ] `outputs/<run_id>/parse_report.md` 생성
-- [ ] `outputs/<run_id>/page_review_queue.json` 생성
-- [ ] `notebooks/01_parse_inspection.ipynb` 준비
-- [ ] page manifest coverage == 224 확인
+- [ ] `pytest -q`
+- [ ] `python -m src.main --help`
+- [ ] 변경 범위에 맞는 재실행 단계 결정
+- [ ] 필요한 `outputs/<run_id>/...` 산출물 확인
+- [ ] 관련 문서 업데이트 여부 확인
 
-## Phase 4. 엔트리 및 보조 데이터셋 추출
-- [ ] `data/processed/entries.jsonl` 생성
-- [ ] `data/processed/abbreviations.jsonl` 생성
-- [ ] `data/processed/back_index.jsonl` 생성
-- [ ] `data/processed/calendar_entries.jsonl` 생성
-- [ ] `data/processed/page_links.jsonl` 생성
-- [ ] `outputs/<run_id>/extraction_quality_report.md` 생성
-- [ ] 다중 엔트리/연속 페이지 bundle 검증
+## 3. 변경 범위별 재실행 체크
 
-## Phase 5. 청킹 및 인덱스 구축
-- [ ] `data/processed/chunks.jsonl` 생성
-- [ ] `indexes/dense_entry/` 생성
-- [ ] `indexes/dense_field/` 생성
-- [ ] `indexes/bm25/` 생성
-- [ ] `indexes/lookup/` 생성
-- [ ] `outputs/<run_id>/index_build_manifest.json` 생성
-- [ ] `outputs/<run_id>/retrieval_smoke_test.md` 생성
+### Parse / Ingest 변경 시
 
-## Phase 6. QA 계층 구축
-- [ ] `src/retrieval/router.py` 구현
-- [ ] `src/retrieval/fusion.py` 구현
-- [ ] `src/retrieval/reranker.py` 구현
-- [ ] `src/qa/answer_generator.py` 구현
-- [ ] `outputs/<run_id>/query_traces/` 생성
-- [ ] `outputs/<run_id>/grounded_answer_samples.md` 생성
-- [ ] `tests/test_grounding.py` 작성
-- [ ] `tests/test_query_routing.py` 작성
+- [ ] `python -m src.main preflight`
+- [ ] `python -m src.main ingest --pdf data/SafetyCompanion-2026.pdf --config configs/prod.yaml`
+- [ ] `python -m src.main build-indexes --config configs/prod.yaml`
+- [ ] `python -m src.main eval --config configs/prod.yaml`
 
-## Phase 7. 평가 및 판정
-- [ ] `src/eval/parse_eval.py` 구현
-- [ ] `src/eval/extraction_eval.py` 구현
-- [ ] `src/eval/retrieval_eval.py` 구현
-- [ ] `src/eval/answer_eval.py` 구현
-- [ ] `data/eval/adversarial_questions.jsonl` 작성
-- [ ] `outputs/<run_id>/eval_summary.md` 생성
-- [ ] `outputs/<run_id>/error_analysis.csv` 생성
-- [ ] `outputs/<run_id>/failure_cases.jsonl` 생성
-- [ ] Step 7 gate 통과 여부 기록
+### Retrieval / Chunking / Index 변경 시
 
-## Phase 8. 운영형 CLI 및 재현 실행 경로
-- [ ] `src/main.py` 구현
-- [ ] `configs/prod.yaml` 작성
-- [ ] `docs/ops_playbook.md` 작성
-- [ ] `docs/cli_reference.md` 작성
-- [ ] `outputs/<run_id>/run_manifest.json` 생성
-- [ ] 표준 검증 명령 실행
+- [ ] `python -m src.main build-indexes --config configs/prod.yaml`
+- [ ] 대표 질의 `query` 실행
+- [ ] `python -m src.main eval --config configs/prod.yaml`
 
-## Phase 9. 선택형 GraphRAG
-- [ ] graph track 사용 여부 결정 확인
-- [ ] `src/graph/entity_extractor.py` 구현
-- [ ] `src/graph/relation_extractor.py` 구현
-- [ ] `src/graph/graph_builder.py` 구현
-- [ ] `src/graph/graph_retriever.py` 구현
-- [ ] `configs/exp_graph.yaml` 작성
-- [ ] `data/graph/nodes.jsonl` 생성
-- [ ] `data/graph/edges.jsonl` 생성
-- [ ] `outputs/<run_id>/graph_schema.md` 생성
-- [ ] `outputs/<run_id>/graph_samples.md` 생성
+### Answer / Grounding 정책 변경 시
 
-## 차단 항목
-- [ ] 미결정 사용자 항목 없음
-- [ ] baseline gate 미통과 상태에서 Phase 8 이상으로 진행하지 않음
+- [ ] 대표 질의 `query` 실행
+- [ ] `python -m src.main eval --config configs/prod.yaml`
+- [ ] citation 문구와 `pdf_page` / `printed_page` 표기 확인
+
+### Eval / Reporting 변경 시
+
+- [ ] `python -m src.main eval --config configs/prod.yaml`
+- [ ] `eval_summary.md`, `retrieval_report.md`, `grounding_report.md` 확인
+
+## 4. 현재 활성 backlog
+
+- [ ] 인코딩 노이즈가 심한 `knowledge` 페이지의 파싱 품질 개선
+- [ ] hard case와 multi-page case의 top-1 안정성 회귀 감시 강화
+- [ ] `run_manifest.json`의 `git_commit` 채움 여부 결정 및 구현
+- [ ] shared dataset / index와 run-scoped 산출물의 경계 문서화 강화
+- [ ] graph track를 기본 경로와 명확히 분리하는 운영 규칙 보강
+
+## 5. 문서 유지보수 체크
+
+- [ ] [README.md](/D:/vscode/safetycompanion/README.md)와 실제 CLI 구조 일치
+- [ ] [plan.md](/D:/vscode/safetycompanion/plan.md)와 현재 운영 우선순위 일치
+- [ ] [spec.md](/D:/vscode/safetycompanion/spec.md)와 코드 계약 일치
+- [ ] [docs/current/cli_reference.md](/D:/vscode/safetycompanion/docs/current/cli_reference.md)와 실제 명령 옵션 일치
+- [ ] [docs/current/data_contract.md](/D:/vscode/safetycompanion/docs/current/data_contract.md)와 실제 레코드 필드 일치
+
+## 6. 조건부 트랙
+
+- [ ] graph 실험 필요성 재확인
+- [ ] `configs/exp_graph.yaml` 기반 분기만 사용
+- [ ] baseline 회귀가 없을 때만 graph 산출물 비교

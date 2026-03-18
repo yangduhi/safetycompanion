@@ -1,185 +1,145 @@
 # Specification
 
 ## 1. 목적
-이 프로젝트의 1차 목표는 `SafetyCompanion-2026.pdf`에서 세미나, 이벤트, SafetyWissen 지식 페이지를 구조화하여, citation이 강제되는 하이브리드 RAG baseline을 만드는 것이다.
 
-## 2. 범위
-포함 범위:
-- PDF 구조 감사
-- 페이지 유형 분류
-- 엔트리 추출
-- 약어/색인/캘린더 보조 데이터셋 구축
-- 하이브리드 검색
-- grounded answer
-- baseline 평가
-- 운영형 CLI와 재현 실행 경로
+이 프로젝트의 목적은 `data/SafetyCompanion-2026.pdf`를 구조화 데이터로 복원하고, 그 위에서 하이브리드 검색과 근거 기반 답변을 제공하는 재현 가능한 CLI 시스템을 운영하는 것이다.
 
-비포함 범위:
-- baseline 품질 확보 전의 GraphRAG
+현재 기본 경로는 다음을 포함한다.
+
+- PDF 파싱과 페이지 분류
+- 엔트리, 약어, 색인, 캘린더 추출
+- 청킹과 인덱스 구축
+- 질의 라우팅과 검색
+- grounded answer 생성
+- 평가 리포트와 baseline snapshot 생성
+
+## 2. 구현 범위
+
+기본 구현 범위:
+
+- [src/parse](/D:/vscode/safetycompanion/src/parse)
+- [src/ingest](/D:/vscode/safetycompanion/src/ingest)
+- [src/retrieval](/D:/vscode/safetycompanion/src/retrieval)
+- [src/qa](/D:/vscode/safetycompanion/src/qa)
+- [src/eval](/D:/vscode/safetycompanion/src/eval)
+- [src/cli](/D:/vscode/safetycompanion/src/cli)
+- [src/workflows](/D:/vscode/safetycompanion/src/workflows)
+
+조건부 범위:
+
+- [src/graph](/D:/vscode/safetycompanion/src/graph) 기반 graph 실험 경로
+- 외부 서비스 연동 실험
+
+기본 범위에서 제외:
+
 - 사용자 승인 없는 외부 API 의존
-- 광고 페이지를 답변 근거로 사용하는 기능
+- 광고성 페이지를 일반 retrieval 근거로 사용하는 기능
+- graph 경로를 기본 CLI에 강제 포함하는 변경
 
-## 3. 권위 문서 규칙
-- 구현과 실행 판단은 `spec.md`를 최상위 기준으로 한다.
-- 단계 순서와 게이트는 `plan.md`를 따른다.
-- 작업 상태 관리는 `tasks.md`를 따른다.
-- `work_process/step_*_진행내용.md`는 단계별 상세 지시서다.
+## 3. 문서 우선순위
 
-## 4. 입력 데이터 계약
-필수 입력:
-- 원본 PDF: `data/SafetyCompanion-2026.pdf`
+현재 기준 문서 우선순위는 아래와 같다.
 
-입력 검증 규칙:
-- 파일이 존재해야 한다.
-- `pdfinfo`로 페이지 수를 확인할 수 있어야 한다.
-- text layer가 일부라도 존재해야 한다.
-- source hash를 계산할 수 있어야 한다.
+1. `spec.md`
+2. `plan.md`
+3. `tasks.md`
+4. `docs/current/cli_reference.md`
+5. `docs/current/ops_playbook.md`
+6. `docs/current/data_contract.md`
+7. `docs/current/acceptance_criteria.md`
 
-입력 변경 규칙:
-- 원본 PDF가 바뀌면 새로운 `run_id`를 생성해야 한다.
-- 원본 PDF hash가 바뀌면 Step 1부터 다시 수행한다.
+`work_process/` 문서는 구축 과정의 기록이며, 현재 운영 규칙의 1차 기준은 아니다.
 
-## 5. 환경 및 권한 계약
+## 4. 환경 계약
+
 작업 기준 환경:
+
 - OS: Windows + PowerShell
 - 작업 루트: `D:\vscode\safetycompanion`
+- Python: `>= 3.11`
 
-사전 확인이 필요한 런타임:
+필수 도구:
+
 - `python`
 - `pdfinfo`
 - `pdftotext`
-- `pdftoppm`
-
-선호 도구:
-- `uv`
 
 선택 도구:
+
+- `pdftoppm`
+- `uv`
 - OCR 도구
-- 로컬 embedding/reranker 모델
-- 외부 LLM API
+- 외부 LLM 또는 외부 reranker API
 
-권한 규칙:
-- 읽기/쓰기 범위는 현재 워크스페이스 전체
-- 파괴적 삭제는 금지
-- 기존 산출물 덮어쓰기는 `--force` 또는 명시적 재생성 규칙이 있을 때만 허용
+기본 의존성은 [pyproject.toml](/D:/vscode/safetycompanion/pyproject.toml)에 정의한다.
 
-외부 서비스 규칙:
-- baseline 구현은 외부 API 없이 동작해야 한다.
-- 외부 LLM fallback은 아래 조건이 모두 충족될 때만 허용한다.
-- 사용자가 허용함
-- 자격 증명이 준비됨
-- `configs/*.yaml`에서 명시적으로 활성화됨
+## 5. 아키텍처 계약
 
-## 6. Preflight 명령
-아래 명령은 구현 전 반드시 통과해야 한다.
+현재 실행 계층은 아래처럼 나뉜다.
 
-```powershell
-python --version
-pdfinfo data/SafetyCompanion-2026.pdf
-pdftotext -f 1 -l 1 data/SafetyCompanion-2026.pdf -
-Test-Path data/SafetyCompanion-2026.pdf
-```
+- [src/main.py](/D:/vscode/safetycompanion/src/main.py): 진입점
+- [src/cli/parser.py](/D:/vscode/safetycompanion/src/cli/parser.py): 명령 파싱
+- [src/cli/commands](/D:/vscode/safetycompanion/src/cli/commands): command별 실행 연결
+- [src/workflows](/D:/vscode/safetycompanion/src/workflows): 단계별 오케스트레이션
+- [src/common/paths.py](/D:/vscode/safetycompanion/src/common/paths.py): 공통 경로 해석
+- [src/common/pipeline.py](/D:/vscode/safetycompanion/src/common/pipeline.py): `RunContext`와 run manifest
 
-Preflight 실패 규칙:
-- 필수 명령 실패 시 구현을 시작하지 않는다.
-- `uv`는 설치되어 있으면 버전을 기록하고, 없으면 대체 설치 경로를 사용한다.
-- 실패 내용은 `outputs/<run_id>/preflight_report.md`에 기록한다.
+설계 원칙:
 
-## 7. 경로 및 산출물 규칙
-모든 상대경로는 저장소 루트 기준이다.
+- 엔트리포인트는 얇게 유지한다.
+- command 계층은 인자 해석과 workflow 호출만 담당한다.
+- workflow 계층은 여러 도메인 모듈을 조합한다.
+- 도메인 로직은 `parse`, `ingest`, `retrieval`, `qa`, `eval`에 둔다.
+- 경로 조합은 가능한 한 `ProjectPaths`와 config 기반으로 처리한다.
+
+## 6. 설정 계약
+
+설정 체인은 아래와 같다.
+
+- [configs/project.yaml](/D:/vscode/safetycompanion/configs/project.yaml): 기본 경로와 파라미터
+- [configs/prod.yaml](/D:/vscode/safetycompanion/configs/prod.yaml): 기본 운영 프로필
+- [configs/exp_graph.yaml](/D:/vscode/safetycompanion/configs/exp_graph.yaml): graph 실험 프로필
+
+`load_config()`는 `extends`를 지원한다. 설정 변경 시 경로, feature flag, retrieval 파라미터가 실제 코드와 일치해야 한다.
+
+## 7. 입력 및 산출물 계약
+
+필수 입력:
+
+- `data/SafetyCompanion-2026.pdf`
 
 안정 산출물:
+
 - `data/raw/*`
 - `data/parsed/*`
 - `data/processed/*`
+- `data/eval/*`
 - `data/graph/*`
 - `indexes/*`
 
 실행별 산출물:
+
 - `outputs/<run_id>/*`
 
-권장 `run_id` 형식:
+`run_id` 형식:
+
 - `YYYYMMDD-HHMMSS_<sourcehash8>`
 
-선택 미러:
-- `outputs/latest/*`
+run manifest는 최소 아래 필드를 포함해야 한다.
 
-규칙:
-- `outputs/<run_id>/...`가 1차 산출물이다.
-- `outputs/latest/`는 가장 최근 성공 실행을 가리키는 미러로만 사용한다.
-
-## 8. 데이터 계약 핵심
-공통 식별자:
-- `document_id`
-- `pdf_page`
-- `printed_page`
-- `entry_bundle_id`
-- `entry_id`
-- `chunk_id`
 - `run_id`
+- `source_file`
+- `source_hash`
+- `config_file`
+- `config_hash`
+- `status`
+- `steps_completed`
+- `artifacts`
+- `metrics`
 
-필수 규칙:
-- `pdf_page`와 `printed_page`를 혼합하지 않는다.
-- printed page가 없으면 `null`을 허용하되, 누락 이유를 기록한다.
-- `entry_id`는 엔트리 단위, `entry_bundle_id`는 multi-page 또는 multi-entry 묶음 단위다.
+## 8. 표준 명령 계약
 
-파일 형식 규칙:
-- 레코드성 데이터셋은 기본적으로 `.jsonl`
-- 스키마/설정은 `.yaml` 또는 `.json`
-- 평가/리포트는 `.md`, `.csv`, `.jsonl`
-
-## 9. 성공 기준 및 게이트
-Step 3 gate:
-- page manifest coverage == 224
-- page type taxonomy가 전 페이지에 적용됨
-
-Step 4 gate:
-- entry 추출 실패 페이지 목록이 산출됨
-- 약어/색인/캘린더 데이터셋이 생성됨
-
-Step 5 gate:
-- dense, BM25, lookup store가 모두 생성됨
-- smoke test 질문에서 빈 응답률 <= 10%
-
-Step 6 gate:
-- citation 없는 응답 테스트가 실패하도록 구현됨
-- route trace가 저장됨
-
-Step 7 gate:
-- seminar/event title extraction accuracy >= 0.98
-- abbreviation exact-match accuracy >= 0.95
-- retrieval Recall@10 >= 0.85
-- citation page hit rate >= 0.95
-- compare/recommendation grounded success rate >= 0.80
-
-Step 8 gate:
-- ingest/build-index/query/eval CLI가 재현 가능하게 동작함
-- `outputs/<run_id>/run_manifest.json`이 생성됨
-
-Step 9는 선택 단계다.
-- Step 7 gate와 Step 8 gate를 모두 통과한 후에만 시작한다.
-
-## 10. 재시도, 롤백, 무효화 규칙
-재시도 규칙:
-- 일시적 파싱 실패는 최대 2회 재시도한다.
-- 외부 의존 실패는 baseline 경로에서 기능 비활성화 후 계속 진행한다.
-
-무효화 규칙:
-- Step 1 산출물 변경 시 Step 2-9를 무효화한다.
-- Step 2 산출물 변경 시 Step 3-9를 무효화한다.
-- Step 3 산출물 변경 시 Step 4-9를 무효화한다.
-- Step 4 산출물 변경 시 Step 5-9를 무효화한다.
-- Step 5 산출물 변경 시 Step 6-9를 무효화한다.
-- Step 6 산출물 변경 시 Step 7-9를 무효화한다.
-- Step 7 산출물 변경 시 Step 8-9를 재판정한다.
-
-롤백 규칙:
-- 안정 산출물은 기존 파일을 즉시 삭제하지 않는다.
-- 실패 실행의 산출물은 `outputs/<run_id>/failed/`로 이동하거나 실패로 마킹한다.
-- 최신 성공 실행을 덮어쓰지 않는다.
-
-## 11. 검증 명령 표준
-구현 완료 후 지원되어야 하는 표준 검증 명령:
+지원해야 하는 표준 명령은 아래와 같다.
 
 ```powershell
 python -m src.main preflight
@@ -187,39 +147,99 @@ python -m src.main ingest --pdf data/SafetyCompanion-2026.pdf --config configs/p
 python -m src.main build-indexes --config configs/prod.yaml
 python -m src.main query "FMVSS 305a 관련 세미나를 찾아줘" --config configs/prod.yaml
 python -m src.main eval --config configs/prod.yaml
-python -m pytest
+pytest -q
 ```
 
-`src.main`이 아직 없으면 Step 2 이전에는 Preflight와 문서 산출물 검증만 수행한다.
+각 명령은 [docs/current/cli_reference.md](/D:/vscode/safetycompanion/docs/current/cli_reference.md)에 정의된 입력과 산출물 계약을 따라야 한다.
 
-## 12. 사용자 결정 등록부
-아래 항목은 미결정이며, 문서만으로 추정하지 않는다.
+## 9. 데이터 계약 핵심
 
-| 항목 | 상태 | 임시 운영 규칙 |
-|---|---|---|
-| 외부 LLM fallback 사용 여부 | Pending | 비활성화 |
-| 외부 embedding/reranker API 사용 여부 | Pending | 로컬 또는 미사용 |
-| Graph DB 사용 여부 | Pending | 파일 기반 JSONL export만 허용 |
-| citation 표시 우선순위 | Pending | `title + pdf_page + printed_page` 동시 표기 |
-| 운영 데모 UI 포함 여부 | Pending | CLI만 필수, UI는 선택 |
+공통 식별자:
 
-확정 항목:
-- baseline MVP에는 GraphRAG를 포함하지 않는다.
-- 광고/약관/디렉터리 페이지는 기본 검색 코퍼스에서 제외한다.
-- 실행 산출물은 `outputs/<run_id>/...`에 저장한다.
+- `document_id`
+- `pdf_page`
+- `printed_page`
+- `entry_id`
+- `entry_bundle_id`
+- `chunk_id`
+- `run_id`
 
-## 13. 실패 시 예외 처리 원칙
-- 입력 PDF 검증 실패: 즉시 중단
-- 페이지 타입 taxonomy 미완성: Step 3에서 중단
-- 엔트리 추출 누락률 과다: Step 4 재작업
-- retrieval 지표 미달: Step 5-6 재작업
-- grounding 지표 미달: Step 6 재작업
-- Step 7 gate 미통과: Step 8 및 Step 9 진행 금지
+핵심 규칙:
 
-## 14. 용어집
-- `pdf_page`: PDF 뷰어 기준의 물리 페이지 번호
-- `printed_page`: 문서 내부 인쇄 표기 페이지 번호
-- `entry_id`: 단일 검색 대상 엔트리 식별자
-- `entry_bundle_id`: multi-page 또는 multi-entry 묶음 식별자
-- `backfill`: lookup 또는 graph hit 이후 실제 본문 근거 엔트리로 다시 이동하는 절차
-- `run_id`: 단일 실행 세션 식별자
+- `pdf_page`와 `printed_page`를 혼합하지 않는다.
+- `printed_page`가 없을 때는 `null`을 허용한다.
+- `entry_id`는 검색 단위 엔트리 식별자다.
+- `entry_bundle_id`는 multi-page 또는 관련 엔트리 묶음을 표현한다.
+- dataset schema는 additive하게 확장될 수 있지만, 공통 핵심 필드는 유지한다.
+
+세부 필드 목록은 [docs/current/data_contract.md](/D:/vscode/safetycompanion/docs/current/data_contract.md)를 따른다.
+
+## 10. Retrieval / Answer 정책 계약
+
+기본 retrieval 경로는 아래 route를 지원한다.
+
+- `abbreviation_lookup`
+- `page_or_index_lookup`
+- `seminar_lookup`
+- `event_lookup`
+- `calendar_lookup`
+- `compare`
+- `recommendation`
+- `multi_page_lookup`
+- `relationship_query`
+- `fallback_general`
+
+route별 허용 코퍼스와 field 우선순위는 [configs/route_field_priority.yaml](/D:/vscode/safetycompanion/configs/route_field_priority.yaml)에 정의한다.
+
+grounded answer 규칙:
+
+- 답변은 가능한 한 citation을 포함해야 한다.
+- citation은 기본적으로 `title + pdf_page + printed_page`를 사용한다.
+- `printed_page`가 없으면 `pdf_page`만 표기한다.
+- 근거가 부족한 compare/recommendation은 보수적 응답을 반환한다.
+
+## 11. 품질 기준
+
+최소 운영 기준은 [docs/current/acceptance_criteria.md](/D:/vscode/safetycompanion/docs/current/acceptance_criteria.md)를 따른다.
+
+핵심 게이트는 아래와 같다.
+
+- page manifest coverage: `224 / 224`
+- seminar/event title extraction accuracy: `>= 0.98`
+- abbreviation exact-match accuracy: `>= 0.95`
+- retrieval Recall@10: `>= 0.85`
+- citation page hit rate: `>= 0.95`
+- compare/recommendation grounded success rate: `>= 0.80`
+
+고정 baseline 참고값은 [docs/baselines/baseline_v5.md](/D:/vscode/safetycompanion/docs/baselines/baseline_v5.md)에 있다.
+
+## 12. 재실행 및 무효화 규칙
+
+아래 규칙은 현재 운영용 무효화 기준이다.
+
+- parse 또는 ingest 로직 변경:
+  `ingest -> build-indexes -> query -> eval`
+- chunking, lookup, indexing 변경:
+  `build-indexes -> query -> eval`
+- route policy, retrieval score 조정 변경:
+  최소 `query -> eval`, 필요 시 `build-indexes -> query -> eval`
+- answer template 또는 grounding 정책 변경:
+  `query -> eval`
+- evaluator 또는 리포트 포맷 변경:
+  `eval`
+
+실패 실행은 기존 성공 산출물을 덮어쓰지 않는다. 실행 실패 정보는 해당 `outputs/<run_id>/...` 아래에 남겨야 한다.
+
+## 13. 운영 예외 처리
+
+- 입력 PDF가 없으면 즉시 중단
+- `pdfinfo` 또는 `pdftotext` 실패 시 `preflight` 단계에서 중단
+- citation 없는 응답은 실패로 취급
+- 광고/비주요 페이지를 일반 검색 근거로 사용하면 실패로 취급
+- 기본 경로가 불안정한 상태에서 graph 경로를 승격하지 않는다
+
+## 14. 현재 알려진 한계
+
+- 일부 페이지는 인코딩 노이즈가 남아 `knowledge` 계열 텍스트 품질이 균일하지 않다.
+- 안정 산출물과 실행별 산출물이 완전히 분리된 구조는 아니므로, shared dataset / index 재생성이 이후 질의에 영향을 줄 수 있다.
+- graph 코드가 존재하지만 기본 CLI에서 사용되는 기본 경로는 아니다.
