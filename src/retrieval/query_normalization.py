@@ -196,13 +196,14 @@ def build_query_profile(query: str) -> dict:
         bilingual_query_parts.append(" ".join(alias_expansions))
     bilingual_query = " ".join(part for part in bilingual_query_parts if part).strip()
     exact_anchors = extract_exact_anchors(alias_query)
-    grouping_request_hint = any(token in alias_query for token in ["두 개", "2개", "함께", "여러 페이지", "정리해줘", "모아서", "모아", "모여", "같이 나오는", "관련 페이지"])
-    multi_page_hint = grouping_request_hint
+    strong_grouping_request_hint = any(token in alias_query for token in ["두 개", "2개", "함께", "여러 페이지", "정리해줘", "모아서", "모아", "모여", "같이 나오는"])
+    related_page_hint = "관련 페이지" in alias_query
+    multi_page_hint = strong_grouping_request_hint
     if not multi_page_hint and any(anchor in {"THOR", "HIII", "ATD"} for anchor in exact_anchors) and ("더미" in query or "dummy" in bilingual_query.lower()):
         multi_page_hint = True
     dummy_anchor_hints = extract_dummy_anchor_hints(alias_query)
     dummy_anchor_clusters = extract_dummy_anchor_clusters(alias_query)
-    if not multi_page_hint and dummy_anchor_clusters and grouping_request_hint:
+    if not multi_page_hint and dummy_anchor_clusters and (strong_grouping_request_hint or related_page_hint):
         multi_page_hint = True
     if not multi_page_hint and len(dummy_anchor_clusters) >= 2:
         multi_page_hint = True
@@ -222,5 +223,7 @@ def build_query_profile(query: str) -> dict:
         "exact_anchors": exact_anchors,
         "dummy_anchor_hints": dummy_anchor_hints,
         "dummy_anchor_clusters": dummy_anchor_clusters,
-        "grouping_request_hint": grouping_request_hint,
+        "grouping_request_hint": strong_grouping_request_hint or related_page_hint,
+        "strong_grouping_request_hint": strong_grouping_request_hint,
+        "related_page_hint": related_page_hint,
     }

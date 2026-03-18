@@ -8,7 +8,7 @@ from src.common.policy import load_route_policy, normalize_abbreviation_key, rou
 from src.common.runtime import read_jsonl
 from src.common.text import tokenize
 from src.retrieval.compare_ranking import compare_pair_success, select_compare_pairs
-from src.retrieval.multipage_grouping import assign_page_role, dummy_group_score
+from src.retrieval.multipage_grouping import assign_page_role, dummy_group_score, role_compatibility_bonus
 from src.retrieval.query_normalization import build_query_profile
 from src.retrieval.build_indexes import load_lookup_store, search_bm25, search_dense
 from src.retrieval.fusion import reciprocal_rank_fusion
@@ -372,34 +372,53 @@ class QueryService:
         return sorted(selected, key=lambda row: row["rerank_score"], reverse=True)
 
     def _apply_multi_page_grouping_v3(self, ranked: list[dict], query_profile: dict, top_n: int) -> list[dict]:
-        selected: list[dict] = []
-        seen_pages: set[int] = set()
-        seen_entries: set[str] = set()
+        rescored: list[dict] = []
         for item in ranked:
-            page = item.get("pdf_page")
-            entry_id = item.get("entry_id")
             base_score = float(item.get("rerank_score", item.get("fused_score", item.get("score", 0.0))))
             group_score, group_features = dummy_group_score(item, query_profile)
             page_role = assign_page_role(item, query_profile)
-
-            if page in seen_pages:
-                continue
-            if entry_id and entry_id in seen_entries:
-                group_score -= 0.2
-                group_features["duplicate_penalty"] = True
-
             row = dict(item)
             row["page_role"] = page_role
             row["group_score"] = group_score
             row["group_features"] = group_features
             row["rerank_score"] = round(base_score + group_score, 4)
+            rescored.append(row)
+
+        rescored.sort(key=lambda row: row["rerank_score"], reverse=True)
+        if not rescored:
+            return []
+
+        seed = rescored[0]
+        seed_role = seed.get("page_role", "detail_page")
+        selected: list[dict] = [seed]
+        seen_pages: set[int] = {seed.get("pdf_page")}
+        seen_entries: set[str] = {seed.get("entry_id")} if seed.get("entry_id") else set()
+
+        for item in rescored[1:]:
+            page = item.get("pdf_page")
+            entry_id = item.get("entry_id")
+            if page in seen_pages:
+                continue
+            role_bonus = role_compatibility_bonus(seed_role, item.get("page_role", "detail_page"))
+            if role_bonus < 0 and len(selected) >= 1:
+                continue
+            score = float(item.get("rerank_score", 0.0)) + role_bonus
+            group_features = dict(item.get("group_features", {}))
+            group_features["role_compatibility_bonus"] = role_bonus
+            if entry_id and entry_id in seen_entries:
+                score -= 0.2
+                group_features["duplicate_penalty"] = True
+            row = dict(item)
+            row["rerank_score"] = round(score, 4)
+            row["group_features"] = group_features
             selected.append(row)
             seen_pages.add(page)
             if entry_id:
                 seen_entries.add(entry_id)
             if len(selected) >= top_n:
                 break
-        return sorted(selected, key=lambda row: row["rerank_score"], reverse=True)
+
+        return selected
 
     def _apply_compare_policy(self, ranked: list[dict], top_n: int) -> list[dict]:
         pair = select_compare_pairs(ranked, required_targets=2, pair_limit=max(2, min(top_n, 3)))

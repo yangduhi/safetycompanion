@@ -8,6 +8,8 @@ def assign_page_role(item: dict, query_profile: dict) -> str:
         return "landscape_page"
     if "thor" in title:
         return "criteria_page"
+    if "hiii" in title or "hybrid iii" in title or "atd" in title:
+        return "criteria_page"
     if "dummies" in title or "calibration" in title:
         return "spec_page"
     if "dummy-trainings" in title or "training" in title:
@@ -56,3 +58,25 @@ def dummy_group_score(item: dict, query_profile: dict) -> tuple[float, dict]:
     if role in {"landscape_page", "criteria_page", "spec_page"}:
         score += 0.2
     return round(score, 4), features
+
+
+def role_compatibility_bonus(seed_role: str, candidate_role: str) -> float:
+    if seed_role == candidate_role:
+        return 0.1
+    good_pairs = {
+        ("landscape_page", "spec_page"),
+        ("landscape_page", "training_page"),
+        ("criteria_page", "spec_page"),
+        ("criteria_page", "landscape_page"),
+        ("spec_page", "landscape_page"),
+        ("spec_page", "criteria_page"),
+    }
+    weak_pairs = {
+        ("overview_page", "detail_page"),
+        ("detail_page", "overview_page"),
+    }
+    if (seed_role, candidate_role) in good_pairs:
+        return 0.35
+    if (seed_role, candidate_role) in weak_pairs:
+        return 0.1
+    return -0.25
