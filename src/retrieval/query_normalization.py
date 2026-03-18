@@ -242,6 +242,24 @@ def is_relationship_hint(original_query: str, normalized_query: str, exact_ancho
     return False
 
 
+def detect_graph_relation_class(query: str, normalized_query: str, exact_anchors: list[str]) -> str | None:
+    text = f"{query} {normalized_query}"
+    lowered = text.lower()
+    topics = detect_query_topics(text)
+    standards = extract_standards(text)
+    dummies = extract_dummy_families(text)
+    orgs = extract_organizations(text)
+    if topics and ("topic" in lowered or "속한" in text or "핵심 엔트리" in text):
+        return "topic_cluster_relation"
+    if orgs:
+        return "organization_entry_relation"
+    if standards or any(anchor.startswith(("FMVSS", "GTR", "UN R", "R")) for anchor in exact_anchors):
+        return "standard_topic_relation"
+    if dummies or any(anchor in {"THOR", "HIII", "ATD"} for anchor in exact_anchors):
+        return "dummy_family_relation"
+    return None
+
+
 def build_query_profile(query: str) -> dict:
     collapsed = collapse_spaced_acronyms(query)
     normalized_anchors = normalize_exact_anchors(collapsed)
@@ -282,6 +300,7 @@ def build_query_profile(query: str) -> dict:
         "page_lookup_hint": is_page_lookup_hint(query, bilingual_query),
         "event_hint": is_event_hint(bilingual_query),
         "relationship_hint": is_relationship_hint(query, bilingual_query, exact_anchors),
+        "graph_relation_class": detect_graph_relation_class(query, bilingual_query, exact_anchors),
         "exact_anchors": exact_anchors,
         "dummy_anchor_hints": dummy_anchor_hints,
         "dummy_anchor_clusters": dummy_anchor_clusters,

@@ -7,6 +7,7 @@ from src.common.config import LoadedConfig
 from src.common.paths import ProjectPaths
 from src.common.policy import load_route_policy, normalize_abbreviation_key, route_policy_for
 from src.common.runtime import read_jsonl
+from src.graph.catalog import detect_query_topics, extract_dummy_families
 from src.graph.graph_retriever import retrieve_graph_paths
 from src.common.text import tokenize
 from src.retrieval.compare_ranking import compare_pair_success, select_compare_pairs
@@ -507,30 +508,59 @@ class QueryService:
             return pair
         return ranked[:top_n]
 
-    def _best_chunk_for_entry(self, entry_id: str, route: str = "relationship_query") -> dict | None:
+    def _best_chunk_for_entry(self, entry_id: str, query_profile: dict | None = None, route: str = "relationship_query") -> dict | None:
         candidates = self.chunks_by_entry_id.get(entry_id, [])
         if not candidates:
             return None
         preferred_fields = route_policy_for(self.route_policy, route).get("preferred_fields", [])
         preferred_chunk_types = {"field_chunk", "entry_overview_chunk", "knowledge_table_chunk"}
+        query_profile = query_profile or {}
+        normalized_query = str(query_profile.get("normalized_query", "")).lower()
+        query_terms = {term for term in tokenize(normalized_query) if len(term) > 1}
+        exact_anchors = {anchor.lower() for anchor in query_profile.get("exact_anchors", [])}
 
-        def field_rank(chunk: dict) -> int:
+        def chunk_rank(chunk: dict) -> tuple[float, int, int]:
             field_name = chunk.get("field_name")
-            if field_name in preferred_fields:
-                return preferred_fields.index(field_name)
-            return len(preferred_fields) + 10
+            field_rank = preferred_fields.index(field_name) if field_name in preferred_fields else len(preferred_fields) + 10
+            text = f"{chunk.get('title', '')} {chunk.get('text', '')}".lower()
+            overlap = sum(1 for term in query_terms if term in text)
+            anchor_boost = 0.0
+            for anchor in exact_anchors:
+                if anchor in text.replace(" ", "") or anchor in text:
+                    anchor_boost += 1.0
+            return (-anchor_boost - overlap * 0.1, field_rank, -len(str(chunk.get("text", ""))))
 
         filtered = [chunk for chunk in candidates if chunk.get("chunk_type") in preferred_chunk_types]
-        ranked = sorted(filtered or candidates, key=lambda chunk: (field_rank(chunk), len(str(chunk.get("text", "")))))
+        ranked = sorted(filtered or candidates, key=chunk_rank)
         return ranked[0] if ranked else None
 
-    def _backfill_graph_hits(self, graph_trace: dict) -> list[dict]:
+    def _relationship_entry_type_prior(self, relation_class: str | None, entry_type: str) -> float:
+        priors = {
+            "topic_cluster_relation": {"seminar": 0.5, "knowledge": 0.28, "event": 0.02},
+            "standard_topic_relation": {"knowledge": 0.55, "seminar": 0.12, "event": -0.05},
+            "organization_entry_relation": {"seminar": 0.3, "event": 0.25, "knowledge": 0.15},
+            "dummy_family_relation": {"knowledge": 0.48, "seminar": 0.1, "event": -0.05},
+        }
+        return priors.get(relation_class or "", {}).get(entry_type, 0.0)
+
+    def _relationship_text_overlap(self, query_profile: dict, text: str) -> float:
+        normalized_query = str(query_profile.get("normalized_query", "")).lower()
+        query_terms = {term for term in tokenize(normalized_query) if len(term) > 2}
+        text_lower = text.lower()
+        overlap = sum(1 for term in query_terms if term in text_lower)
+        return round(overlap * 0.06, 4)
+
+    def _backfill_graph_hits(self, graph_trace: dict, query_profile: dict) -> list[dict]:
         backfilled: list[dict] = []
+        relation_class = query_profile.get("graph_relation_class")
+        topic_names = {name.lower() for name in detect_query_topics(str(query_profile.get("normalized_query", "")))}
+        exact_anchors = {anchor.lower() for anchor in query_profile.get("exact_anchors", [])}
+        dummy_names = {name.lower() for name in extract_dummy_families(str(query_profile.get("normalized_query", "")))}
         for hit in graph_trace.get("entry_hits", []):
             entry_id = hit.get("entry_id")
             if not entry_id:
                 continue
-            chunk = self._best_chunk_for_entry(entry_id, route="relationship_query")
+            chunk = self._best_chunk_for_entry(entry_id, query_profile=query_profile, route="relationship_query")
             entry = self.entries_by_id.get(entry_id)
             if chunk:
                 row = dict(chunk)
@@ -550,13 +580,65 @@ class QueryService:
             else:
                 continue
 
-            row["score"] = float(hit.get("score", 0.0)) + 2.0
-            row["graph_score"] = float(hit.get("score", 0.0))
+            title_lower = str(row.get("title", "")).lower()
+            text_lower = f"{row.get('title', '')} {row.get('text', '')}".lower()
+            entry_type = str(row.get("entry_type", ""))
+            score = float(hit.get("score", 0.0))
+            score += self._relationship_entry_type_prior(relation_class, entry_type)
+            score += self._relationship_text_overlap(query_profile, text_lower)
+            title_overlap = self._relationship_text_overlap(query_profile, title_lower) * 3.0
+            score += title_overlap
+            non_topic_edge_count = int(hit.get("non_topic_edge_count", 0))
+            if relation_class == "topic_cluster_relation":
+                score += min(non_topic_edge_count, 4) * 0.05
+            elif relation_class == "organization_entry_relation":
+                score += min(non_topic_edge_count, 3) * 0.04
+            if relation_class == "topic_cluster_relation":
+                if topic_names and any(topic in text_lower for topic in topic_names):
+                    score += 0.4
+                if topic_names and any(topic in title_lower for topic in topic_names):
+                    score += 0.7
+                if "overview" in str(row.get("field_name", "")).lower() or "page_summary" in str(row.get("field_name", "")).lower():
+                    score += 0.08
+                if any(token in title_lower for token in ["ncap", "protocol", "test matrix"]):
+                    score -= 0.8
+            if relation_class == "standard_topic_relation" and exact_anchors:
+                title_compact = title_lower.replace(" ", "")
+                text_compact = text_lower.replace(" ", "")
+                title_exact = any(anchor in title_compact or anchor in title_lower for anchor in exact_anchors)
+                text_exact = any(anchor in text_compact or anchor in text_lower for anchor in exact_anchors)
+                if title_exact:
+                    score += 1.2
+                elif text_exact:
+                    score += 0.35
+                if "dummy" in title_lower or "current dummy landscape" in title_lower:
+                    score -= 1.2
+                if "dummy" in str(row.get("section_l1", "")).lower() and not title_exact:
+                    score -= 0.5
+            if relation_class == "organization_entry_relation" and hit.get("matched_node_names"):
+                if any(name.lower() in text_lower for name in hit.get("matched_node_names", [])):
+                    score += 0.35
+            if relation_class == "dummy_family_relation":
+                if hit.get("matched_node_names") and any(name.lower() in title_lower for name in hit.get("matched_node_names", [])):
+                    score += 0.8
+                if dummy_names and any(name in text_lower for name in dummy_names):
+                    score += 0.35
+                if "dummy" in title_lower or "calibration" in title_lower or "landscape" in title_lower:
+                    score += 0.35
+                if "ncap" in title_lower or "protocol" in title_lower:
+                    score -= 1.4
+                if "dummy" not in str(row.get("section_l1", "")).lower() and "dummy" not in title_lower:
+                    score -= 0.75
+
+            row["score"] = round(score + 2.0, 4)
+            row["graph_score"] = round(score, 4)
             row["graph_match_names"] = hit.get("matched_node_names", [])
             row["graph_match_types"] = hit.get("matched_node_types", [])
             row["graph_edge_types"] = hit.get("matched_edge_types", [])
             row["graph_backfill_success"] = True
             row["graph_source_pages"] = hit.get("source_pages", [])
+            row["graph_relation_class"] = relation_class
+            row["graph_non_topic_edge_count"] = hit.get("non_topic_edge_count", 0)
             backfilled.append(row)
         return backfilled
 
@@ -564,7 +646,7 @@ class QueryService:
         if not self.graph_enabled or not self.graph_nodes or not self.graph_edges:
             return [], {"graph_enabled": False, "matched_nodes": [], "matched_edges": [], "entry_hits": []}
         graph_trace = retrieve_graph_paths(query, query_profile, self.graph_nodes, self.graph_edges)
-        backfilled = self._backfill_graph_hits(graph_trace)
+        backfilled = self._backfill_graph_hits(graph_trace, query_profile=query_profile)
         ranked = sorted(backfilled, key=lambda row: float(row.get("graph_score", row.get("score", 0.0))), reverse=True)[:top_n]
         graph_debug = {
             "graph_enabled": True,
@@ -573,6 +655,7 @@ class QueryService:
             "matched_entry_ids": [row.get("entry_id") for row in graph_trace.get("entry_hits", [])],
             "backfilled_entry_ids": [row.get("entry_id") for row in ranked],
             "backfill_success": bool(ranked),
+            "graph_relation_class": query_profile.get("graph_relation_class"),
         }
         return ranked, graph_debug
 

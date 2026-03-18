@@ -50,6 +50,15 @@ def retrieve_graph_paths(question: str, query_profile: dict, nodes: list[dict], 
     matched_target_ids = {node["node_id"] for node in matched_nodes}
     entry_hits: dict[str, dict] = {}
     matched_edges: list[dict] = []
+    total_edge_counts: defaultdict[str, int] = defaultdict(int)
+    non_topic_edge_counts: defaultdict[str, int] = defaultdict(int)
+
+    for edge in edges:
+        source_id = str(edge.get("source_id", ""))
+        if source_id.startswith("entry:"):
+            total_edge_counts[source_id] += 1
+            if str(edge.get("edge_type")) != "BELONGS_TO_TOPIC":
+                non_topic_edge_counts[source_id] += 1
 
     for edge in edges:
         source_id = str(edge.get("source_id", ""))
@@ -67,6 +76,8 @@ def retrieve_graph_paths(question: str, query_profile: dict, nodes: list[dict], 
                     "matched_node_types": set(),
                     "matched_edge_types": set(),
                     "source_pages": set(),
+                    "total_edge_count": total_edge_counts.get(source_id, 0),
+                    "non_topic_edge_count": non_topic_edge_counts.get(source_id, 0),
                 },
             )
             hit["score"] += float(edge.get("confidence", 0.0)) + 0.2
@@ -90,6 +101,8 @@ def retrieve_graph_paths(question: str, query_profile: dict, nodes: list[dict], 
                 "matched_node_types": sorted(hit["matched_node_types"]),
                 "matched_edge_types": sorted(hit["matched_edge_types"]),
                 "source_pages": sorted(hit["source_pages"]),
+                "total_edge_count": hit["total_edge_count"],
+                "non_topic_edge_count": hit["non_topic_edge_count"],
             }
         )
 
