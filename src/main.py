@@ -216,7 +216,7 @@ def _query_once(query: str, config_path: str | None) -> tuple[RunContext, dict, 
     manifest = ctx.init_run_manifest()
     service = QueryService(ROOT, ctx.config)
     trace = service.retrieve(query)
-    answer = build_grounded_answer(query, trace["route"], trace["ranked_hits"])
+    answer = build_grounded_answer(query, trace["route"], trace["ranked_hits"], route_policy=service.route_policy)
     return ctx, manifest, {"trace": trace, "answer": answer}
 
 
@@ -251,7 +251,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
 
     def answer_query(question: str) -> dict:
         trace = service.retrieve(question)
-        answer = build_grounded_answer(question, trace["route"], trace["ranked_hits"])
+        answer = build_grounded_answer(question, trace["route"], trace["ranked_hits"], route_policy=service.route_policy)
         return {"trace": trace, "answer": answer}
 
     metrics = {}

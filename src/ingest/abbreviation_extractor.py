@@ -29,12 +29,24 @@ def extract_abbreviations(page_manifest: Iterable[dict]) -> list[dict]:
         raw_text = page.get("raw_text", page["text"])
         for raw_line in raw_text.splitlines():
             segments = [segment.strip() for segment in re.split(r"\s{4,}", raw_line) if segment.strip()]
-            for segment in segments:
+            idx = 0
+            while idx < len(segments):
+                segment = segments[idx]
+                abbr = None
+                expansion = None
+
                 match = re.match(r"^(?P<abbr>[A-Za-z0-9][A-Za-z0-9+./-]{1,15})\s+(?P<exp>.+)$", segment)
-                if not match:
+                if match:
+                    abbr = match.group("abbr").strip()
+                    expansion = match.group("exp").strip()
+                elif looks_like_abbreviation(segment) and idx + 1 < len(segments):
+                    abbr = segment
+                    expansion = segments[idx + 1].strip()
+                    idx += 1
+
+                idx += 1
+                if not abbr or not expansion:
                     continue
-                abbr = match.group("abbr").strip()
-                expansion = match.group("exp").strip()
                 if not looks_like_abbreviation(abbr):
                     continue
                 if len(expansion) < 3 or expansion.lower() == abbr.lower():
@@ -51,7 +63,7 @@ def extract_abbreviations(page_manifest: Iterable[dict]) -> list[dict]:
                         "section_hint": page["section_l1"],
                         "pdf_page": page["pdf_page"],
                         "printed_page": page["printed_page"],
-                        "title": page["title"],
-                    }
-                )
+                            "title": page["title"],
+                        }
+                    )
     return items

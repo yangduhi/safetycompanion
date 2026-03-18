@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from src.common.policy import normalize_abbreviation_key
+
 
 def build_abbreviation_lookup(items: list[dict]) -> dict[str, list[dict]]:
     lookup: dict[str, list[dict]] = defaultdict(list)
     for item in items:
-        keys = {item["abbr"].lower(), *item.get("aliases", [])}
+        keys = {item["abbr"].lower(), normalize_abbreviation_key(item["abbr"]), *item.get("aliases", [])}
         for key in keys:
             lookup[key].append(item)
     return dict(lookup)

@@ -23,3 +23,63 @@ def test_grounded_answer_contains_page_metadata():
 def test_grounded_answer_handles_no_evidence():
     answer = build_grounded_answer("없음", "fallback_general", [])
     assert answer["answer"] == "문서상 확인 불가"
+
+
+def test_abbreviation_route_uses_template_answer():
+    route_policy = {
+        "abbreviation_lookup": {
+            "preferred_fields": ["expansion"],
+            "deterministic_template": True,
+            "min_evidence": 1,
+            "min_distinct_entries": 1,
+        }
+    }
+    answer = build_grounded_answer(
+        "AEB",
+        "abbreviation_lookup",
+        [
+            {
+                "title": "AEB",
+                "pdf_page": 215,
+                "printed_page": 215,
+                "chunk_id": "abbr_aeb_215",
+                "field_name": "expansion",
+                "text": "AEB = Autonomous Emergency Braking",
+                "expansion": "Autonomous Emergency Braking",
+                "score": 2.0,
+            }
+        ],
+        route_policy=route_policy,
+    )
+    assert answer["template_answer_used"] is True
+    assert "Autonomous Emergency Braking" in answer["answer"]
+    assert "pdf p.215" in answer["answer"]
+
+
+def test_compare_route_requires_multiple_evidence():
+    route_policy = {
+        "compare_or_recommend": {
+            "preferred_fields": ["course_description", "overview"],
+            "deterministic_template": False,
+            "min_evidence": 2,
+            "min_distinct_entries": 2,
+        }
+    }
+    answer = build_grounded_answer(
+        "두 세미나를 비교해줘",
+        "compare_or_recommend",
+        [
+            {
+                "title": "Seminar A",
+                "pdf_page": 10,
+                "printed_page": 10,
+                "chunk_id": "a",
+                "entry_id": "entry_a",
+                "field_name": "course_description",
+                "text": "Description A",
+                "score": 1.0,
+            }
+        ],
+        route_policy=route_policy,
+    )
+    assert "비교를 위한 문서 근거가 충분하지 않음" in answer["answer"]

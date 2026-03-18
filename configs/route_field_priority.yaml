@@ -1,0 +1,142 @@
+routes:
+  abbreviation_lookup:
+    allowed_entry_types:
+      - abbreviation
+    allowed_chunk_types:
+      - abbreviation_chunk
+    preferred_fields:
+      - expansion
+      - overview
+    deterministic_template: true
+    min_evidence: 1
+    min_distinct_entries: 1
+
+  page_or_index_lookup:
+    allowed_entry_types:
+      - knowledge
+      - seminar
+      - event
+      - index
+    allowed_chunk_types:
+      - index_lookup_chunk
+      - knowledge_table_chunk
+      - field_chunk
+      - entry_overview_chunk
+    preferred_fields:
+      - page_summary
+      - knowledge_topic
+      - overview
+      - keyword
+      - facts
+    deterministic_template: false
+    min_evidence: 1
+    min_distinct_entries: 1
+
+  seminar_lookup:
+    allowed_entry_types:
+      - seminar
+    allowed_chunk_types:
+      - field_chunk
+      - entry_overview_chunk
+    preferred_fields:
+      - course_description
+      - course_objectives
+      - course_contents
+      - overview
+      - facts
+    deterministic_template: false
+    min_evidence: 1
+    min_distinct_entries: 1
+
+  event_lookup:
+    allowed_entry_types:
+      - event
+    allowed_chunk_types:
+      - field_chunk
+      - entry_overview_chunk
+    preferred_fields:
+      - description
+      - overview
+      - contents
+    deterministic_template: false
+    min_evidence: 1
+    min_distinct_entries: 1
+
+  calendar_lookup:
+    allowed_entry_types:
+      - seminar
+      - event
+      - calendar
+    allowed_chunk_types:
+      - field_chunk
+      - entry_overview_chunk
+      - calendar_chunk
+    preferred_fields:
+      - course_description
+      - description
+      - overview
+      - schedule
+    deterministic_template: false
+    min_evidence: 1
+    min_distinct_entries: 1
+
+  compare_or_recommend:
+    allowed_entry_types:
+      - seminar
+      - event
+      - knowledge
+    allowed_chunk_types:
+      - field_chunk
+      - entry_overview_chunk
+      - knowledge_table_chunk
+    preferred_fields:
+      - course_description
+      - course_contents
+      - description
+      - overview
+      - page_summary
+    deterministic_template: false
+    min_evidence: 2
+    min_distinct_entries: 2
+
+  relationship_query:
+    allowed_entry_types:
+      - seminar
+      - event
+      - knowledge
+      - index
+    allowed_chunk_types:
+      - field_chunk
+      - entry_overview_chunk
+      - knowledge_table_chunk
+      - index_lookup_chunk
+    preferred_fields:
+      - page_summary
+      - description
+      - course_description
+      - overview
+      - keyword
+    deterministic_template: false
+    min_evidence: 2
+    min_distinct_entries: 2
+
+  fallback_general:
+    allowed_entry_types:
+      - seminar
+      - event
+      - knowledge
+      - index
+    allowed_chunk_types:
+      - field_chunk
+      - entry_overview_chunk
+      - knowledge_table_chunk
+      - index_lookup_chunk
+    preferred_fields:
+      - overview
+      - course_description
+      - page_summary
+      - description
+      - keyword
+    deterministic_template: false
+    min_evidence: 1
+    min_distinct_entries: 1

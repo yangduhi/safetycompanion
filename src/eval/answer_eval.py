@@ -44,12 +44,18 @@ def evaluate_answers(gold_questions: list[dict], answer_query: Callable[[str], d
                 "difficulty": question.get("difficulty", "unknown"),
                 "question_type": question.get("question_type", "unknown"),
                 "route": trace.get("route"),
+                "route_name": result.get("route_name", trace.get("route")),
                 "citation_any_hit": citation_any_hit,
                 "citation_top1_hit": citation_top1_hit,
                 "field_grounding_hit": field_hit,
                 "grounded_success": grounded,
                 "top1_page": top1_page,
                 "top1_field": evidence[0].get("field_name") if evidence else None,
+                "selected_field": result.get("selected_field"),
+                "evidence_count": result.get("evidence_count", len(evidence)),
+                "span_present": result.get("span_present", False),
+                "template_answer_used": result.get("template_answer_used", False),
+                "multi_page_used": result.get("multi_page_used", False),
                 "answer_preview": result.get("answer", "")[:200],
             }
         )

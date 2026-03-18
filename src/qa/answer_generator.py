@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Iterable
 
+from src.common.policy import route_policy_for
+from src.common.text import tokenize
+
 
 FIELD_PRIORITY_BY_ROUTE = {
     "abbreviation_lookup": ["expansion", "overview"],
@@ -24,34 +27,77 @@ def format_citation(item: dict) -> str:
     return f"{item.get('title', 'Untitled')} (pdf p.{item.get('pdf_page')}, printed p.{printed}{field_suffix})"
 
 
-def _field_priority(route: str, field_name: str | None) -> int:
+def _field_priority(route: str, field_name: str | None, route_policy: dict | None = None) -> int:
     if not field_name:
         return 999
-    preferred = FIELD_PRIORITY_BY_ROUTE.get(route, FIELD_PRIORITY_BY_ROUTE["fallback_general"])
+    if route_policy:
+        preferred = route_policy_for(route_policy, route).get("preferred_fields") or FIELD_PRIORITY_BY_ROUTE.get(route, FIELD_PRIORITY_BY_ROUTE["fallback_general"])
+    else:
+        preferred = FIELD_PRIORITY_BY_ROUTE.get(route, FIELD_PRIORITY_BY_ROUTE["fallback_general"])
     if field_name in preferred:
         return preferred.index(field_name)
     return len(preferred) + 10
 
 
-def select_evidence(route: str, candidates: list[dict], limit: int = 3) -> list[dict]:
+def _extract_span(query: str, text: str, max_chars: int = 280) -> dict:
+    if not text:
+        return {
+            "evidence_text": "",
+            "evidence_start": 0,
+            "evidence_end": 0,
+            "span_present": False,
+        }
+    query_terms = [term for term in tokenize(query) if len(term) > 1]
+    candidates = []
+    for segment in [part.strip() for part in text.splitlines() if part.strip()] or [text]:
+        lowered = segment.lower()
+        overlap = sum(1 for term in query_terms if term in lowered)
+        candidates.append((overlap, segment))
+    candidates.sort(key=lambda item: (item[0], len(item[1])), reverse=True)
+    best = candidates[0][1][:max_chars].strip()
+    try:
+        start = text.index(best)
+    except ValueError:
+        start = 0
+    end = start + len(best)
+    return {
+        "evidence_text": best,
+        "evidence_start": start,
+        "evidence_end": end,
+        "span_present": bool(best),
+    }
+
+
+def _confidence(item: dict) -> float:
+    score = float(item.get("rerank_score", item.get("fused_score", item.get("score", 0.0))))
+    if score <= 0:
+        return 0.0
+    if score >= 3:
+        return 1.0
+    return round(score / 3.0, 4)
+
+
+def select_evidence(route: str, candidates: list[dict], limit: int = 3, route_policy: dict | None = None) -> list[dict]:
     if not candidates:
         return []
+    policy = route_policy_for(route_policy or {}, route) if route_policy else {}
     ranked = sorted(
         candidates,
         key=lambda item: (
-            _field_priority(route, item.get("field_name")),
+            _field_priority(route, item.get("field_name"), route_policy=route_policy),
             -float(item.get("rerank_score", item.get("fused_score", item.get("score", 0.0)))),
         ),
     )
     selected: list[dict] = []
     seen: set[tuple] = set()
     seen_entries: set[str] = set()
+    min_distinct_entries = int(policy.get("min_distinct_entries", 1))
 
     for item in ranked:
         dedupe_key = (item.get("chunk_id"), item.get("title"), item.get("pdf_page"), item.get("field_name"))
         if dedupe_key in seen:
             continue
-        if route == "compare_or_recommend" and len(seen_entries) < 2:
+        if route == "compare_or_recommend" and len(seen_entries) < min_distinct_entries:
             entry_id = item.get("entry_id")
             if entry_id and entry_id in seen_entries and len(ranked) > len(selected):
                 continue
@@ -64,7 +110,31 @@ def select_evidence(route: str, candidates: list[dict], limit: int = 3) -> list[
     return selected
 
 
-def build_grounded_answer(query: str, route: str, candidates: Iterable[dict]) -> dict:
+def _abbreviation_answer(query: str, route: str, selected: list[dict]) -> dict:
+    top = selected[0]
+    abbr = top.get("title", query).strip()
+    expansion = top.get("expansion") or top.get("evidence_text") or top.get("text", "")
+    if isinstance(expansion, str) and "=" in expansion:
+        expansion = expansion.split("=", 1)[1].strip()
+    answer = (
+        f"{abbr}는 {expansion}입니다. "
+        f"출처: {format_citation(top)}."
+    )
+    return {
+        "query": query,
+        "route": route,
+        "answer": answer,
+        "evidence": selected,
+        "selected_field": top.get("field_name"),
+        "evidence_count": len(selected),
+        "span_present": all(item.get("span_present", False) for item in selected),
+        "template_answer_used": True,
+        "multi_page_used": len({item.get('pdf_page') for item in selected}) > 1,
+        "route_name": route,
+    }
+
+
+def build_grounded_answer(query: str, route: str, candidates: Iterable[dict], route_policy: dict | None = None) -> dict:
     ranked = list(candidates)
     if not ranked:
         return {
@@ -72,9 +142,43 @@ def build_grounded_answer(query: str, route: str, candidates: Iterable[dict]) ->
             "route": route,
             "answer": "문서상 확인 불가",
             "evidence": [],
+            "selected_field": None,
+            "evidence_count": 0,
+            "span_present": False,
+            "template_answer_used": False,
+            "multi_page_used": False,
+            "route_name": route,
         }
-    selected = select_evidence(route, ranked)
+    policy = route_policy_for(route_policy or {}, route) if route_policy else {}
+    selected_raw = select_evidence(route, ranked, limit=max(3, int(policy.get("min_evidence", 1))), route_policy=route_policy)
+    selected = []
+    for item in selected_raw:
+        span = _extract_span(query, item.get("text", ""))
+        enriched = dict(item)
+        enriched.update(span)
+        enriched["evidence_field"] = item.get("field_name")
+        enriched["evidence_page"] = item.get("pdf_page")
+        enriched["evidence_confidence"] = _confidence(item)
+        selected.append(enriched)
+
+    if policy.get("deterministic_template"):
+        return _abbreviation_answer(query, route, selected)
+
     top = selected[0]
+    evidence_count = len(selected)
+    distinct_entries = {item.get("entry_id") for item in selected if item.get("entry_id")}
+    min_evidence = int(policy.get("min_evidence", 1))
+    min_distinct_entries = int(policy.get("min_distinct_entries", 1))
+    multi_page_used = len({item.get("pdf_page") for item in selected}) > 1
+
+    cautious_answer = None
+    if route == "compare_or_recommend":
+        if evidence_count < min_evidence or len(distinct_entries) < min_distinct_entries:
+            if any(token in query for token in ["추천", "recommend"]):
+                cautious_answer = "추천 가능하지만 문서 근거가 충분하지 않음"
+            else:
+                cautious_answer = "비교를 위한 문서 근거가 충분하지 않음"
+
     evidence = [
         {
             "title": item.get("title"),
@@ -83,14 +187,23 @@ def build_grounded_answer(query: str, route: str, candidates: Iterable[dict]) ->
             "chunk_id": item.get("chunk_id"),
             "field_name": item.get("field_name"),
             "text": item.get("text", "")[:400],
+            "evidence_text": item.get("evidence_text", ""),
+            "evidence_field": item.get("evidence_field"),
+            "evidence_start": item.get("evidence_start"),
+            "evidence_end": item.get("evidence_end"),
+            "evidence_page": item.get("evidence_page"),
+            "evidence_confidence": item.get("evidence_confidence"),
+            "entry_id": item.get("entry_id"),
         }
         for item in selected
     ]
     bullet_lines = [f"- {format_citation(item)}" for item in selected]
-    if route == "compare_or_recommend" and len(selected) >= 2:
+    if route == "compare_or_recommend" and len(selected) >= 2 and not cautious_answer:
         summary_text = " / ".join(item.get("title", "Untitled") for item in selected[:2])
+    elif cautious_answer:
+        summary_text = cautious_answer
     else:
-        summary_text = top.get("text", "")[:500].strip() or top.get("title", "문서상 확인 불가")
+        summary_text = top.get("evidence_text", "").strip() or top.get("text", "")[:500].strip() or top.get("title", "문서상 확인 불가")
     answer = "\n".join(
         [
             f"질의 경로: {route}",
@@ -108,4 +221,10 @@ def build_grounded_answer(query: str, route: str, candidates: Iterable[dict]) ->
         "route": route,
         "answer": answer,
         "evidence": evidence,
+        "selected_field": top.get("field_name"),
+        "evidence_count": evidence_count,
+        "span_present": all(item.get("evidence_text") for item in evidence),
+        "template_answer_used": False,
+        "multi_page_used": multi_page_used,
+        "route_name": route,
     }
