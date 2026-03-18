@@ -56,6 +56,8 @@ EXACT_ANCHOR_ALIASES = {
     "impact biomechanics": "Introduction to Impact Biomechanics and Human Body Models",
 }
 
+DUMMY_ANCHORS = {"THOR", "HIII", "HYBRID III", "SID-IIS", "WORLDSID", "ATD", "DUMMY", "LANDSCAPE"}
+
 
 def collapse_spaced_acronyms(text: str) -> str:
     pattern = re.compile(r"\b(?:[A-Za-z]\s+){2,}[A-Za-z]\b")
@@ -104,6 +106,21 @@ def extract_exact_anchors(text: str) -> list[str]:
         anchor = re.sub(r"\s+", " ", anchor.strip()).upper()
         cleaned.append(anchor)
     return sorted(set(cleaned))
+
+
+def extract_dummy_anchor_hints(text: str) -> list[str]:
+    hints = []
+    lowered = text.lower()
+    if "dummy" in lowered or "더미" in text:
+        hints.append("DUMMY")
+    if "landscape" in lowered:
+        hints.append("LANDSCAPE")
+    if "hybrid iii" in lowered:
+        hints.append("HYBRID III")
+    for anchor in ["THOR", "HIII", "ATD", "SID-IIs", "WorldSID"]:
+        if anchor.lower() in lowered:
+            hints.append(anchor.upper())
+    return sorted(set(hints))
 
 
 def _prepare_compare_text(text: str) -> str:
@@ -166,6 +183,7 @@ def build_query_profile(query: str) -> dict:
     multi_page_hint = any(token in alias_query for token in ["두 개", "2개", "함께", "여러 페이지"])
     if not multi_page_hint and any(anchor in {"THOR", "HIII", "ATD"} for anchor in exact_anchors) and ("더미" in query or "dummy" in bilingual_query.lower()):
         multi_page_hint = True
+    dummy_anchor_hints = extract_dummy_anchor_hints(alias_query)
     return {
         "original_query": query,
         "collapsed_query": collapsed,
@@ -180,4 +198,5 @@ def build_query_profile(query: str) -> dict:
         "page_lookup_hint": is_page_lookup_hint(query, bilingual_query),
         "event_hint": is_event_hint(bilingual_query),
         "exact_anchors": exact_anchors,
+        "dummy_anchor_hints": dummy_anchor_hints,
     }

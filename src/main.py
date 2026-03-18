@@ -288,6 +288,8 @@ def cmd_eval(args: argparse.Namespace) -> int:
     korean_query_eval_path = ctx.output_path("korean_query_eval.md")
     hard_route_eval_path = ctx.output_path("hard_route_eval.md")
     multi_page_eval_path = ctx.output_path("multi_page_eval.md")
+    multi_page_group_details_path = ctx.output_path("multi_page_group_details.csv")
+    dummy_hardslice_eval_path = ctx.output_path("dummy_hardslice_eval.md")
     recommendation_eval_path = ctx.output_path("recommendation_eval.md")
     compare_eval_path = ctx.output_path("compare_eval.md")
     compare_pair_details_path = ctx.output_path("compare_pair_details.csv")
@@ -317,6 +319,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
     korean_rows = [row for row in all_retrieval_rows if contains_korean(row.get("question"))]
     hard_rows = [row for row in all_retrieval_rows if row.get("difficulty") == "hard"]
     multi_page_rows = [row for row in all_retrieval_rows if row.get("question_type") == "multi_page_lookup"]
+    dummy_rows = [row for row in all_retrieval_rows if row.get("question_type") == "multi_page_lookup" and any(token in str(row.get("question", "")).lower() for token in ["thor", "dummy", "atd", "landscape"])]
     recommendation_rows = [row for row in all_retrieval_rows if row.get("question_type") == "recommendation"]
     compare_rows = [row for row in all_retrieval_rows if row.get("question_type") == "compare"]
     event_rows = [row for row in all_retrieval_rows if row.get("question_type") == "event_lookup"]
@@ -324,12 +327,14 @@ def cmd_eval(args: argparse.Namespace) -> int:
     write_retrieval_slice_markdown(korean_query_eval_path, "Korean Query Eval", korean_rows)
     write_retrieval_slice_markdown(hard_route_eval_path, "Hard Route Eval", hard_rows)
     write_retrieval_slice_markdown(multi_page_eval_path, "Multi Page Eval", multi_page_rows)
+    write_retrieval_slice_markdown(dummy_hardslice_eval_path, "Dummy Hard Slice Eval", dummy_rows)
     write_retrieval_slice_markdown(recommendation_eval_path, "Recommendation Eval", recommendation_rows)
     write_retrieval_slice_markdown(compare_eval_path, "Compare Eval", compare_rows)
     write_retrieval_slice_markdown(event_lookup_eval_path, "Event Lookup Eval", event_rows)
     write_retrieval_slice_markdown(exact_anchor_eval_path, "Exact Anchor Eval", exact_anchor_rows)
     write_reranker_ablation(reranker_ablation_path, all_retrieval_rows)
     write_detail_csv(compare_pair_details_path, [row for row in all_retrieval_rows if row.get("question_type") == "compare"])
+    write_detail_csv(multi_page_group_details_path, multi_page_rows)
 
     all_grounding_rows = answer_details + adversarial_answer_details
     compare_grounding_rows = [row for row in all_grounding_rows if row.get("question_type") == "compare"]
@@ -373,6 +378,8 @@ def cmd_eval(args: argparse.Namespace) -> int:
             korean_query_eval_path,
             hard_route_eval_path,
             multi_page_eval_path,
+            multi_page_group_details_path,
+            dummy_hardslice_eval_path,
             recommendation_eval_path,
             compare_eval_path,
             compare_pair_details_path,

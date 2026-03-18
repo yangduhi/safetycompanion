@@ -1,0 +1,18 @@
+# Taxonomy V2 Spec
+
+## 목적
+남은 multi-page 실패를 subtype 수준으로 분해해 원인을 더 명확히 기록한다.
+
+## V2 Subtypes
+- `MULTI_PAGE_COLLAPSE__MISSING_SECONDARY_PAGE`
+- `MULTI_PAGE_COLLAPSE__WRONG_PAGE_GROUPING`
+- `MULTI_PAGE_COLLAPSE__DUPLICATE_ENTRY_COLLAPSE`
+- `MULTI_PAGE_COLLAPSE__SUMMARY_OVER_COLLAPSE`
+- `MULTI_PAGE_COLLAPSE__DUMMY_TOPIC_MERGE_FAIL`
+
+## 분류 원칙
+- 보조 페이지 누락이면 `MISSING_SECONDARY_PAGE`
+- 관련 없는 페이지를 끼워 넣으면 `WRONG_PAGE_GROUPING`
+- 같은 entry만 반복되면 `DUPLICATE_ENTRY_COLLAPSE`
+- page list보다 summary가 먼저 붕괴하면 `SUMMARY_OVER_COLLAPSE`
+- THOR / dummy / ATD anchor가 무너지면 `DUMMY_TOPIC_MERGE_FAIL`

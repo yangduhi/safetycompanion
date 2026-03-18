@@ -310,6 +310,41 @@ class QueryService:
                 break
         return sorted(selected, key=lambda row: row["rerank_score"], reverse=True)
 
+    def _apply_multi_page_grouping_v2(self, ranked: list[dict], query_profile: dict, top_n: int) -> list[dict]:
+        dummy_hints = set(query_profile.get("dummy_anchor_hints", []))
+        selected: list[dict] = []
+        seen_pages: set[int] = set()
+        seen_entries: set[str] = set()
+        for item in ranked:
+            page = item.get("pdf_page")
+            entry_id = item.get("entry_id")
+            title_lower = str(item.get("title", "")).lower()
+            text_lower = str(item.get("text", "")).lower()
+            score = float(item.get("rerank_score", item.get("fused_score", item.get("score", 0.0))))
+            group_bonus = 0.0
+
+            if dummy_hints:
+                if any(anchor.lower() in title_lower or anchor.lower() in text_lower for anchor in dummy_hints):
+                    group_bonus += 0.45
+                if item.get("entry_type") == "knowledge":
+                    group_bonus += 0.2
+
+            if page in seen_pages:
+                continue
+            if entry_id and entry_id in seen_entries:
+                group_bonus -= 0.2
+
+            row = dict(item)
+            row["rerank_score"] = round(score + group_bonus, 4)
+            row["group_bonus"] = round(group_bonus, 4)
+            selected.append(row)
+            seen_pages.add(page)
+            if entry_id:
+                seen_entries.add(entry_id)
+            if len(selected) >= top_n:
+                break
+        return sorted(selected, key=lambda row: row["rerank_score"], reverse=True)
+
     def _apply_compare_policy(self, ranked: list[dict], top_n: int) -> list[dict]:
         pair = select_compare_pairs(ranked, required_targets=2, pair_limit=max(2, min(top_n, 3)))
         if compare_pair_success(pair, required_targets=2):
@@ -370,7 +405,7 @@ class QueryService:
         if route == "compare":
             ranked = self._apply_compare_policy(ranked, final_top_n)
         elif route == "multi_page_lookup":
-            ranked = self._apply_multi_page_policy(ranked, final_top_n)
+            ranked = self._apply_multi_page_grouping_v2(ranked, query_profile=query_profile, top_n=final_top_n)
         else:
             ranked = ranked[:final_top_n]
         return {
