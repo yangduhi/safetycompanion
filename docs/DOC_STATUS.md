@@ -21,6 +21,10 @@
 | `current/ops_playbook.md` | 현재 운영/재실행/장애 대응 가이드 |
 | `current/README.md` | 핵심 운영 문서 관리 규칙 |
 | `current/rag_upgrade_strategy.md` | 현재 구조 기준의 RAG 고도화 전략 문서 |
+| `current/graph_rag_adoption_plan.md` | GraphRAG 도입 게이트와 단계별 실행 계획 |
+| `current/graph_eval_contract.md` | graph eval 산출물과 지표 계약 |
+| `current/minimal_graph_schema.md` | G1용 최소 graph node/edge/provenance 스키마 |
+| `current/graph_failure_taxonomy.md` | graph 전용 failure taxonomy |
 | `run_manifest.schema.json` | run manifest 스키마 |
 | `git_workflow.md` | 저장소 작업 흐름 참고 |
 | `source_document_profile.md` | 입력 PDF의 특성 메모 |

@@ -122,3 +122,5 @@ Graph 경로는 [configs/exp_graph.yaml](/D:/vscode/safetycompanion/configs/exp_
 - 기본 CLI 경로가 안정적일 것
 - baseline 회귀가 없을 것
 - graph 결과를 비교 평가할 준비가 되었을 것
+
+세부 도입 순서와 게이트는 [docs/current/graph_rag_adoption_plan.md](/D:/vscode/safetycompanion/docs/current/graph_rag_adoption_plan.md)를 따른다.

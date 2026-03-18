@@ -69,3 +69,8 @@
 - [ ] graph 실험 필요성 재확인
 - [ ] `configs/exp_graph.yaml` 기반 분기만 사용
 - [ ] baseline 회귀가 없을 때만 graph 산출물 비교
+- [ ] `docs/current/graph_rag_adoption_plan.md` 기준으로 graph hard set 작성
+- [ ] minimal graph index schema 정의
+- [ ] `relationship_query` 한정 graph backfill 실험
+- [ ] `docs/current/graph_eval_contract.md` 기준으로 graph eval/report 포맷 고정
+- [ ] `docs/current/graph_failure_taxonomy.md` 기준으로 graph 실패 분류 분리
