@@ -7,6 +7,7 @@ from src.common.config import LoadedConfig
 from src.common.policy import load_route_policy, normalize_abbreviation_key, route_policy_for
 from src.common.runtime import read_jsonl
 from src.common.text import tokenize
+from src.retrieval.compare_ranking import compare_pair_success, select_compare_pairs
 from src.retrieval.query_normalization import build_query_profile
 from src.retrieval.build_indexes import load_lookup_store, search_bm25, search_dense
 from src.retrieval.fusion import reciprocal_rank_fusion
@@ -91,6 +92,30 @@ class QueryService:
             target_lower = target.lower()
             target_dense_entry, target_dense_field = self._search_dense_collection(target_query, top_k)
             target_bm25 = search_bm25(self.bm25_store, target_query, top_k) if self.bm25_store.exists() else []
+
+            targeted_title_hits: list[dict] = []
+            for chunk in self.chunks:
+                if chunk.get("entry_type") not in {"seminar", "event"}:
+                    continue
+                if chunk.get("chunk_type") not in {"entry_overview_chunk", "field_chunk"}:
+                    continue
+                title_lower = str(chunk.get("title", "")).lower()
+                boost = 0.0
+                if "automated driving" in target_lower and title_lower.startswith("automated driving"):
+                    boost += 1.2
+                if "briefing" in target_lower and "briefing" in title_lower:
+                    boost += 1.1
+                if "policy" in target_lower and ("policy" in title_lower or "policies" in title_lower):
+                    boost += 0.9
+                if ("입문" in target or "introduction" in target_lower) and "introduction" in title_lower:
+                    boost += 0.35
+                if boost > 0:
+                    enriched = dict(chunk)
+                    enriched["compare_target_index"] = index
+                    enriched["score"] = float(enriched.get("score", 0.0)) + boost
+                    targeted_title_hits.append(enriched)
+
+            target_dense_entry.extend(targeted_title_hits)
             for row in target_dense_entry:
                 enriched = dict(row)
                 enriched["compare_target_index"] = index
@@ -285,6 +310,12 @@ class QueryService:
                 break
         return sorted(selected, key=lambda row: row["rerank_score"], reverse=True)
 
+    def _apply_compare_policy(self, ranked: list[dict], top_n: int) -> list[dict]:
+        pair = select_compare_pairs(ranked, required_targets=2, pair_limit=max(2, min(top_n, 3)))
+        if compare_pair_success(pair, required_targets=2):
+            return pair
+        return ranked[:top_n]
+
     def retrieve(self, query: str) -> dict:
         query_profile = build_query_profile(query)
         search_query = query_profile.get("normalized_query", query)
@@ -336,7 +367,9 @@ class QueryService:
         fused = reciprocal_rank_fusion(ranked_lists, k=rrf_k)
         pre_rerank = list(fused)
         ranked = rerank(query, fused, top_n=max(final_top_n, 10), route=route, query_profile=query_profile)
-        if route == "multi_page_lookup":
+        if route == "compare":
+            ranked = self._apply_compare_policy(ranked, final_top_n)
+        elif route == "multi_page_lookup":
             ranked = self._apply_multi_page_policy(ranked, final_top_n)
         else:
             ranked = ranked[:final_top_n]
@@ -352,5 +385,6 @@ class QueryService:
             "anchor_hits": anchor_hits,
             "fused_hits": pre_rerank,
             "ranked_hits": ranked,
+            "compare_pair_success": compare_pair_success(ranked, required_targets=2) if route == "compare" else None,
             "policy": route_policy_for(self.route_policy, route),
         }

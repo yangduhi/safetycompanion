@@ -56,6 +56,7 @@ def evaluate_answers(gold_questions: list[dict], answer_query: Callable[[str], d
                 "span_present": result.get("span_present", False),
                 "template_answer_used": result.get("template_answer_used", False),
                 "multi_page_used": result.get("multi_page_used", False),
+                "compare_pair_success": result.get("route_name") == "compare" and result.get("evidence_count", 0) >= 2,
                 "answer_preview": result.get("answer", "")[:200],
             }
         )

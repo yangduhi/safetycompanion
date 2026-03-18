@@ -62,6 +62,7 @@ def evaluate_retrieval(gold_questions: list[dict], retrieve: Callable[[str], dic
                 "top_result_page": next(iter(top1_pages), None) if top1_pages else None,
                 "pre_rerank_top1_hit": pre_top1_hit,
                 "rerank_improved_top1": top1_hit and not pre_top1_hit,
+                "compare_pair_success": trace.get("compare_pair_success"),
             }
         )
 

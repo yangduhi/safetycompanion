@@ -4,6 +4,7 @@ from typing import Iterable
 
 from src.common.policy import route_policy_for
 from src.common.text import tokenize
+from src.retrieval.compare_ranking import compare_pair_success
 
 
 FIELD_PRIORITY_BY_ROUTE = {
@@ -143,6 +144,68 @@ def _abbreviation_answer(query: str, route: str, selected: list[dict]) -> dict:
     }
 
 
+def _compare_answer(query: str, route: str, selected: list[dict]) -> dict:
+    if not compare_pair_success(selected, required_targets=2):
+        return {
+            "query": query,
+            "route": route,
+            "answer": "비교를 위한 문서 근거가 충분하지 않음",
+            "evidence": [],
+            "selected_field": None,
+            "evidence_count": len(selected),
+            "span_present": False,
+            "template_answer_used": True,
+            "multi_page_used": False,
+            "route_name": route,
+        }
+
+    first, second = selected[:2]
+    answer = "\n".join(
+        [
+            f"질의 경로: {route}",
+            f"비교 대상 1: {format_citation(first)}",
+            f"비교 대상 2: {format_citation(second)}",
+            "",
+            "비교 요약:",
+            f"- {first.get('title', 'Untitled')}",
+            f"  근거: {first.get('evidence_text', '') or first.get('text', '')[:180]}",
+            f"- {second.get('title', 'Untitled')}",
+            f"  근거: {second.get('evidence_text', '') or second.get('text', '')[:180]}",
+        ]
+    )
+    evidence = [
+        {
+            "title": item.get("title"),
+            "pdf_page": item.get("pdf_page"),
+            "printed_page": item.get("printed_page"),
+            "chunk_id": item.get("chunk_id"),
+            "field_name": item.get("field_name"),
+            "text": item.get("text", "")[:400],
+            "evidence_text": item.get("evidence_text", ""),
+            "evidence_field": item.get("evidence_field"),
+            "evidence_start": item.get("evidence_start"),
+            "evidence_end": item.get("evidence_end"),
+            "evidence_page": item.get("evidence_page"),
+            "evidence_confidence": item.get("evidence_confidence"),
+            "entry_id": item.get("entry_id"),
+            "compare_target_index": item.get("compare_target_index"),
+        }
+        for item in selected[:2]
+    ]
+    return {
+        "query": query,
+        "route": route,
+        "answer": answer,
+        "evidence": evidence,
+        "selected_field": f"{first.get('field_name')}|{second.get('field_name')}",
+        "evidence_count": len(evidence),
+        "span_present": all(item.get("evidence_text") for item in evidence),
+        "template_answer_used": True,
+        "multi_page_used": True,
+        "route_name": route,
+    }
+
+
 def build_grounded_answer(query: str, route: str, candidates: Iterable[dict], route_policy: dict | None = None) -> dict:
     route = "compare" if route == "compare_or_recommend" else route
     ranked = list(candidates)
@@ -173,6 +236,8 @@ def build_grounded_answer(query: str, route: str, candidates: Iterable[dict], ro
 
     if policy.get("deterministic_template"):
         return _abbreviation_answer(query, route, selected)
+    if route == "compare":
+        return _compare_answer(query, route, selected)
 
     top = selected[0]
     evidence_count = len(selected)

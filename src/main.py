@@ -290,6 +290,8 @@ def cmd_eval(args: argparse.Namespace) -> int:
     multi_page_eval_path = ctx.output_path("multi_page_eval.md")
     recommendation_eval_path = ctx.output_path("recommendation_eval.md")
     compare_eval_path = ctx.output_path("compare_eval.md")
+    compare_pair_details_path = ctx.output_path("compare_pair_details.csv")
+    compare_grounding_report_path = ctx.output_path("compare_grounding_report.md")
     event_lookup_eval_path = ctx.output_path("event_lookup_eval.md")
     exact_anchor_eval_path = ctx.output_path("exact_anchor_eval.md")
     reranker_ablation_path = ctx.output_path("reranker_ablation.md")
@@ -327,8 +329,14 @@ def cmd_eval(args: argparse.Namespace) -> int:
     write_retrieval_slice_markdown(event_lookup_eval_path, "Event Lookup Eval", event_rows)
     write_retrieval_slice_markdown(exact_anchor_eval_path, "Exact Anchor Eval", exact_anchor_rows)
     write_reranker_ablation(reranker_ablation_path, all_retrieval_rows)
+    write_detail_csv(compare_pair_details_path, [row for row in all_retrieval_rows if row.get("question_type") == "compare"])
 
     all_grounding_rows = answer_details + adversarial_answer_details
+    compare_grounding_rows = [row for row in all_grounding_rows if row.get("question_type") == "compare"]
+    write_text(compare_grounding_report_path, markdown_from_metrics("Compare Grounding Report", {
+        "compare_grounded_success_rate": round(sum(1 for row in compare_grounding_rows if row.get("grounded_success")) / len(compare_grounding_rows), 4) if compare_grounding_rows else 0.0,
+        "compare_pair_success_rate": round(sum(1 for row in compare_grounding_rows if row.get("compare_pair_success")) / len(compare_grounding_rows), 4) if compare_grounding_rows else 0.0,
+    }))
     taxonomy_rows = build_error_taxonomy(all_retrieval_rows, all_grounding_rows)
     write_text(error_taxonomy_report_path, error_taxonomy_markdown(taxonomy_rows))
 
@@ -367,6 +375,8 @@ def cmd_eval(args: argparse.Namespace) -> int:
             multi_page_eval_path,
             recommendation_eval_path,
             compare_eval_path,
+            compare_pair_details_path,
+            compare_grounding_report_path,
             event_lookup_eval_path,
             exact_anchor_eval_path,
             reranker_ablation_path,

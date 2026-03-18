@@ -83,3 +83,45 @@ def test_compare_route_requires_multiple_evidence():
         route_policy=route_policy,
     )
     assert "비교를 위한 문서 근거가 충분하지 않음" in answer["answer"]
+
+
+def test_compare_route_builds_pair_answer():
+    route_policy = {
+        "compare": {
+            "preferred_fields": ["course_description", "overview"],
+            "deterministic_template": False,
+            "min_evidence": 2,
+            "min_distinct_entries": 2,
+        }
+    }
+    answer = build_grounded_answer(
+        "A와 B를 비교해줘",
+        "compare",
+        [
+            {
+                "title": "Seminar A",
+                "pdf_page": 10,
+                "printed_page": 10,
+                "chunk_id": "a",
+                "entry_id": "entry_a",
+                "field_name": "course_description",
+                "text": "Description A",
+                "score": 1.0,
+                "compare_target_index": 1,
+            },
+            {
+                "title": "Seminar B",
+                "pdf_page": 20,
+                "printed_page": 20,
+                "chunk_id": "b",
+                "entry_id": "entry_b",
+                "field_name": "course_description",
+                "text": "Description B",
+                "score": 1.0,
+                "compare_target_index": 2,
+            },
+        ],
+        route_policy=route_policy,
+    )
+    assert "비교 대상 1" in answer["answer"]
+    assert "비교 대상 2" in answer["answer"]
