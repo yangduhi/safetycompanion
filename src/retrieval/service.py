@@ -7,7 +7,7 @@ from src.common.config import LoadedConfig
 from src.common.paths import ProjectPaths
 from src.common.policy import load_route_policy, normalize_abbreviation_key, route_policy_for
 from src.common.runtime import read_jsonl
-from src.graph.catalog import detect_query_topics, extract_dummy_families
+from src.graph.catalog import TOPIC_ALIASES, canonical_topic, detect_query_topics, extract_dummy_families
 from src.graph.graph_retriever import retrieve_graph_paths
 from src.common.text import tokenize
 from src.retrieval.compare_ranking import compare_pair_success, select_compare_pairs
@@ -536,7 +536,7 @@ class QueryService:
 
     def _relationship_entry_type_prior(self, relation_class: str | None, entry_type: str) -> float:
         priors = {
-            "topic_cluster_relation": {"seminar": 0.5, "knowledge": 0.28, "event": 0.02},
+            "topic_cluster_relation": {"seminar": 0.45, "knowledge": 0.15, "event": 0.28},
             "standard_topic_relation": {"knowledge": 0.55, "seminar": 0.12, "event": -0.05},
             "organization_entry_relation": {"seminar": 0.3, "event": 0.25, "knowledge": 0.15},
             "dummy_family_relation": {"knowledge": 0.48, "seminar": 0.1, "event": -0.05},
@@ -550,7 +550,7 @@ class QueryService:
         overlap = sum(1 for term in query_terms if term in text_lower)
         return round(overlap * 0.06, 4)
 
-    def _backfill_graph_hits(self, graph_trace: dict, query_profile: dict) -> list[dict]:
+    def _backfill_graph_hits(self, graph_trace: dict, query_profile: dict, route: str = "entity_relation_lookup") -> list[dict]:
         backfilled: list[dict] = []
         relation_class = query_profile.get("graph_relation_class")
         topic_names = {name.lower() for name in detect_query_topics(str(query_profile.get("normalized_query", "")))}
@@ -560,7 +560,7 @@ class QueryService:
             entry_id = hit.get("entry_id")
             if not entry_id:
                 continue
-            chunk = self._best_chunk_for_entry(entry_id, query_profile=query_profile, route="relationship_query")
+            chunk = self._best_chunk_for_entry(entry_id, query_profile=query_profile, route=route)
             entry = self.entries_by_id.get(entry_id)
             if chunk:
                 row = dict(chunk)
@@ -611,6 +611,12 @@ class QueryService:
                     score += 1.2
                 elif text_exact:
                     score += 0.35
+                if any(name.lower() in title_lower for name in hit.get("matched_node_names", [])):
+                    score += 0.85
+                elif any(name.lower() in text_lower for name in hit.get("matched_node_names", [])):
+                    score += 0.25
+                if "ncap" in title_lower and not any(name.lower() in title_lower for name in hit.get("matched_node_names", [])):
+                    score -= 0.45
                 if "dummy" in title_lower or "current dummy landscape" in title_lower:
                     score -= 1.2
                 if "dummy" in str(row.get("section_l1", "")).lower() and not title_exact:
@@ -627,6 +633,8 @@ class QueryService:
                     score += 0.35
                 if "ncap" in title_lower or "protocol" in title_lower:
                     score -= 1.4
+                if not any(name.lower() in title_lower for name in hit.get("matched_node_names", [])) and "dummy" not in title_lower and "landscape" not in title_lower and "calibration" not in title_lower:
+                    score -= 0.55
                 if "dummy" not in str(row.get("section_l1", "")).lower() and "dummy" not in title_lower:
                     score -= 0.75
 
@@ -642,14 +650,146 @@ class QueryService:
             backfilled.append(row)
         return backfilled
 
-    def _relationship_query_results(self, query: str, query_profile: dict, top_n: int) -> tuple[list[dict], dict]:
+    def _entity_relation_results(self, query: str, query_profile: dict, top_n: int) -> tuple[list[dict], dict]:
         if not self.graph_enabled or not self.graph_nodes or not self.graph_edges:
             return [], {"graph_enabled": False, "matched_nodes": [], "matched_edges": [], "entry_hits": []}
         graph_trace = retrieve_graph_paths(query, query_profile, self.graph_nodes, self.graph_edges)
-        backfilled = self._backfill_graph_hits(graph_trace, query_profile=query_profile)
+        backfilled = self._backfill_graph_hits(graph_trace, query_profile=query_profile, route="entity_relation_lookup")
         ranked = sorted(backfilled, key=lambda row: float(row.get("graph_score", row.get("score", 0.0))), reverse=True)[:top_n]
         graph_debug = {
             "graph_enabled": True,
+            "matched_nodes": [node.get("name") for node in graph_trace.get("matched_nodes", [])],
+            "matched_edges_count": len(graph_trace.get("matched_edges", [])),
+            "matched_entry_ids": [row.get("entry_id") for row in graph_trace.get("entry_hits", [])],
+            "backfilled_entry_ids": [row.get("entry_id") for row in ranked],
+            "backfill_success": bool(ranked),
+            "graph_relation_class": query_profile.get("graph_relation_class"),
+        }
+        return ranked, graph_debug
+
+    def _topic_cluster_terms(self, query_profile: dict) -> tuple[set[str], list[str]]:
+        topics = detect_query_topics(str(query_profile.get("normalized_query", "")))
+        aliases = sorted({alias for topic in topics for alias in TOPIC_ALIASES.get(topic, [])})
+        return topics, aliases
+
+    def _topic_cluster_explicit_hits(self, query_profile: dict) -> list[dict]:
+        topics, aliases = self._topic_cluster_terms(query_profile)
+        if not topics:
+            return []
+        preferred_fields = {"overview", "course_description", "description", "page_summary", "knowledge_topic"}
+        candidates: list[dict] = []
+        for chunk in self.chunks:
+            if chunk.get("entry_type") not in {"seminar", "event", "knowledge"}:
+                continue
+            title_lower = str(chunk.get("title", "")).lower()
+            text_lower = str(chunk.get("text", "")).lower()
+            section_topic = canonical_topic(chunk.get("section_l1"))
+            score = 0.0
+            if section_topic in topics:
+                score += 1.2
+            if any(alias in title_lower for alias in aliases):
+                score += 1.25
+            elif any(alias in text_lower for alias in aliases):
+                score += 0.35
+            if chunk.get("field_name") in preferred_fields:
+                score += 0.12
+            if chunk.get("entry_type") == "seminar":
+                score += 0.18
+            elif chunk.get("entry_type") == "event":
+                score += 0.12
+            if any(token in title_lower for token in ["protocol", "matrix", "rating composition", "wissen"]) and not any(alias in title_lower for alias in aliases):
+                score -= 0.7
+            if score <= 0.45:
+                continue
+            row = dict(chunk)
+            row["score"] = round(float(row.get("score", 0.0)) + score, 4)
+            row["topic_cluster_explicit_hit"] = True
+            candidates.append(row)
+        return candidates
+
+    def _apply_topic_cluster_policy(self, ranked: list[dict], query_profile: dict, graph_trace: dict, top_n: int) -> list[dict]:
+        topics, aliases = self._topic_cluster_terms(query_profile)
+        graph_entry_scores = {row.get("entry_id"): float(row.get("score", 0.0)) for row in graph_trace.get("entry_hits", [])}
+        selected: list[dict] = []
+        seen_entries: set[str] = set()
+        for item in ranked:
+            entry_id = item.get("entry_id")
+            if entry_id and entry_id in seen_entries:
+                continue
+            title_lower = str(item.get("title", "")).lower()
+            text_lower = f"{item.get('title', '')} {item.get('text', '')}".lower()
+            entry_type = str(item.get("entry_type", ""))
+            field_name = str(item.get("field_name", ""))
+            score = float(item.get("rerank_score", item.get("fused_score", item.get("score", 0.0))))
+            if entry_id in graph_entry_scores:
+                score += min(graph_entry_scores[entry_id], 4.0) * 0.1 + 0.25
+            if any(alias in title_lower for alias in aliases):
+                score += 1.2
+            elif any(alias in text_lower for alias in aliases):
+                score += 0.25
+            if canonical_topic(item.get("section_l1")) in topics:
+                score += 0.75
+            if entry_type == "seminar":
+                score += 0.42
+            elif entry_type == "event":
+                score += 0.3
+            elif entry_type == "knowledge":
+                score += 0.1
+            if field_name in {"overview", "course_description", "description"}:
+                score += 0.18
+            elif field_name in {"page_summary", "knowledge_topic"}:
+                score += 0.08
+            if any(token in title_lower for token in ["briefing", "requirements", "policies"]):
+                score += 0.45
+            if any(token in title_lower for token in ["dialogue", "introduction"]):
+                score -= 0.25
+            if any(token in title_lower for token in ["protocol", "matrix", "rating composition"]):
+                score -= 0.9
+            if title_lower.startswith("safetywissen.com wissen") and not any(alias in title_lower for alias in aliases):
+                score -= 0.35
+            row = dict(item)
+            row["rerank_score"] = round(score, 4)
+            row["topic_cluster_selected"] = True
+            selected.append(row)
+            if entry_id:
+                seen_entries.add(entry_id)
+            if len(selected) >= top_n:
+                break
+        return sorted(selected, key=lambda row: float(row.get("rerank_score", 0.0)), reverse=True)
+
+    def _topic_cluster_results(
+        self,
+        query: str,
+        query_profile: dict,
+        dense_top_k: int,
+        lexical_top_k: int,
+        final_top_n: int,
+        rrf_k: int,
+    ) -> tuple[list[dict], dict]:
+        topics, aliases = self._topic_cluster_terms(query_profile)
+        if not topics:
+            return [], {"graph_enabled": self.graph_enabled, "matched_nodes": [], "matched_edges_count": 0, "matched_entry_ids": [], "backfilled_entry_ids": [], "backfill_success": False, "graph_relation_class": query_profile.get("graph_relation_class")}
+
+        topic_query = " ".join([str(query_profile.get("normalized_query", query)), *aliases]).strip()
+        dense_entry, dense_field = self._search_dense_collection(topic_query, dense_top_k)
+        bm25 = search_bm25(self.bm25_store, topic_query, lexical_top_k) if self.bm25_store.exists() else []
+        explicit_hits = self._topic_cluster_explicit_hits(query_profile)
+        dense_entry = self._filter_by_route_policy("topic_cluster_lookup", dense_entry, query_profile=query_profile)
+        dense_field = self._filter_by_route_policy("topic_cluster_lookup", dense_field, query_profile=query_profile)
+        bm25 = self._filter_by_route_policy("topic_cluster_lookup", bm25, query_profile=query_profile)
+        explicit_hits = self._filter_by_route_policy("topic_cluster_lookup", explicit_hits, query_profile=query_profile)
+
+        graph_trace = {"matched_nodes": [], "matched_edges": [], "entry_hits": []}
+        graph_hits: list[dict] = []
+        if self.graph_enabled and self.graph_nodes and self.graph_edges:
+            graph_trace = retrieve_graph_paths(query, query_profile, self.graph_nodes, self.graph_edges)
+            graph_hits = self._backfill_graph_hits(graph_trace, query_profile=query_profile, route="topic_cluster_lookup")
+
+        fused = reciprocal_rank_fusion([graph_hits, explicit_hits, dense_entry, dense_field, bm25], k=rrf_k)
+        ranked = rerank(query, fused, top_n=max(final_top_n, 10), route="topic_cluster_lookup", query_profile=query_profile)
+        ranked = self._apply_topic_cluster_policy(ranked, query_profile=query_profile, graph_trace=graph_trace, top_n=final_top_n)
+        graph_debug = {
+            "graph_enabled": self.graph_enabled,
             "matched_nodes": [node.get("name") for node in graph_trace.get("matched_nodes", [])],
             "matched_edges_count": len(graph_trace.get("matched_edges", [])),
             "matched_entry_ids": [row.get("entry_id") for row in graph_trace.get("entry_hits", [])],
@@ -667,6 +807,7 @@ class QueryService:
             normalized_query=search_query,
             is_multi_page_hint=query_profile.get("is_multi_page_hint", False),
             compare_hint=query_profile.get("compare_hint", False),
+            graph_relation_class=query_profile.get("graph_relation_class"),
             relationship_hint=query_profile.get("relationship_hint", False),
             page_lookup_hint=query_profile.get("page_lookup_hint", False),
             event_hint=query_profile.get("event_hint", False),
@@ -676,8 +817,8 @@ class QueryService:
         final_top_n = self.config.get("retrieval", "final_top_n", default=5)
         rrf_k = self.config.get("retrieval", "rrf_k", default=60)
 
-        if route == "relationship_query":
-            relationship_hits, graph_debug = self._relationship_query_results(query, query_profile, final_top_n)
+        if route == "entity_relation_lookup":
+            relationship_hits, graph_debug = self._entity_relation_results(query, query_profile, final_top_n)
             if relationship_hits:
                 return {
                     "route": route,
@@ -691,6 +832,26 @@ class QueryService:
                     "anchor_hits": [],
                     "fused_hits": relationship_hits,
                     "ranked_hits": relationship_hits,
+                    "compare_pair_success": None,
+                    "group_debug": None,
+                    "graph_debug": graph_debug,
+                    "policy": route_policy_for(self.route_policy, route),
+                }
+        if route == "topic_cluster_lookup":
+            topic_hits, graph_debug = self._topic_cluster_results(query, query_profile, dense_top_k, lexical_top_k, final_top_n, rrf_k)
+            if topic_hits:
+                return {
+                    "route": route,
+                    "query_profile": query_profile,
+                    "normalized_query": search_query,
+                    "page_targets": sorted({item.get("pdf_page") for item in topic_hits if item.get("pdf_page") is not None}),
+                    "dense_entry_hits": [],
+                    "dense_field_hits": [],
+                    "bm25_hits": [],
+                    "lookup_hits": [],
+                    "anchor_hits": [],
+                    "fused_hits": topic_hits,
+                    "ranked_hits": topic_hits,
                     "compare_pair_success": None,
                     "group_debug": None,
                     "graph_debug": graph_debug,

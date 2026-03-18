@@ -85,6 +85,10 @@ GraphRAG는 장기적으로 아래 질문군에 가치가 있다.
 목표:
 - `relationship_query`에서만 graph retrieval 사용
 
+주의:
+- 이후 구현 단계에서는 `relationship_query`를 `entity_relation_lookup`과 `topic_cluster_lookup`으로 분리할 수 있다.
+- `entity relation`은 graph-first를 유지하고, `topic cluster`는 topic-filtered hybrid retrieval + graph validator 경로를 권장한다.
+
 초기 허용 질문:
 - “A와 B의 관계”
 - “같이 언급되는 엔트리”

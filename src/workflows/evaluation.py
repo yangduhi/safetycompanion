@@ -74,12 +74,16 @@ def run_evaluation(ctx: RunContext, baseline_label: str | None = None) -> Workfl
     graph_rows: list[dict] = []
     graph_failures: list[dict] = []
     graph_eval_path = ctx.output_path("graph_eval.md")
+    graph_eval_entity_relation_path = ctx.output_path("graph_eval_entity_relation.md")
     graph_eval_topic_cluster_path = ctx.output_path("graph_eval_topic_cluster.md")
+    graph_eval_topic_cluster_v2_path = ctx.output_path("graph_eval_topic_cluster_v2.md")
     graph_eval_standard_relation_path = ctx.output_path("graph_eval_standard_relation.md")
     graph_route_details_path = ctx.output_path("graph_route_details.csv")
     graph_route_details_v2_path = ctx.output_path("graph_route_details_v2.csv")
+    graph_route_details_v3_path = ctx.output_path("graph_route_details_v3.csv")
     graph_failure_cases_path = ctx.output_path("graph_failure_cases.jsonl")
     graph_failure_cases_v2_path = ctx.output_path("graph_failure_cases_v2.jsonl")
+    graph_failure_cases_v3_path = ctx.output_path("graph_failure_cases_v3.jsonl")
     if graph_enabled and graph_eval_questions:
         graph_retrieval_metrics, graph_retrieval_details = evaluate_retrieval(graph_eval_questions, retrieve)
         graph_answer_metrics, graph_answer_details = evaluate_answers(graph_eval_questions, answer_query)
@@ -92,10 +96,22 @@ def run_evaluation(ctx: RunContext, baseline_label: str | None = None) -> Workfl
         write_text(graph_eval_path, graph_eval_markdown(graph_metrics))
         write_detail_csv(graph_route_details_path, graph_rows)
         write_detail_csv(graph_route_details_v2_path, graph_rows)
+        write_detail_csv(graph_route_details_v3_path, graph_rows)
         write_jsonl(graph_failure_cases_path, graph_failures)
         write_jsonl(graph_failure_cases_v2_path, graph_failures)
+        write_jsonl(graph_failure_cases_v3_path, graph_failures)
+        entity_rows = [
+            row
+            for row in graph_rows
+            if row.get("query_type") in {"dummy_family_relation", "standard_topic_relation", "organization_entry_relation"}
+        ]
+        write_text(graph_eval_entity_relation_path, graph_eval_markdown(compute_graph_metrics(entity_rows)))
         write_text(
             graph_eval_topic_cluster_path,
+            graph_eval_markdown(compute_graph_metrics([row for row in graph_rows if row.get("query_type") == "topic_cluster_relation"])),
+        )
+        write_text(
+            graph_eval_topic_cluster_v2_path,
             graph_eval_markdown(compute_graph_metrics([row for row in graph_rows if row.get("query_type") == "topic_cluster_relation"])),
         )
         write_text(
@@ -104,12 +120,16 @@ def run_evaluation(ctx: RunContext, baseline_label: str | None = None) -> Workfl
         )
     else:
         graph_eval_path = None
+        graph_eval_entity_relation_path = None
         graph_eval_topic_cluster_path = None
+        graph_eval_topic_cluster_v2_path = None
         graph_eval_standard_relation_path = None
         graph_route_details_path = None
         graph_route_details_v2_path = None
+        graph_route_details_v3_path = None
         graph_failure_cases_path = None
         graph_failure_cases_v2_path = None
+        graph_failure_cases_v3_path = None
 
     summary_path = ctx.output_path("eval_summary.md")
     retrieval_report_path = ctx.output_path("retrieval_report.md")
@@ -294,12 +314,16 @@ def run_evaluation(ctx: RunContext, baseline_label: str | None = None) -> Workfl
         artifacts.extend(
             [
                 graph_eval_path,
+                graph_eval_entity_relation_path,
                 graph_eval_topic_cluster_path,
+                graph_eval_topic_cluster_v2_path,
                 graph_eval_standard_relation_path,
                 graph_route_details_path,
                 graph_route_details_v2_path,
+                graph_route_details_v3_path,
                 graph_failure_cases_path,
                 graph_failure_cases_v2_path,
+                graph_failure_cases_v3_path,
             ]
         )
     return WorkflowResult(

@@ -8,6 +8,7 @@ def route_query(
     normalized_query: str | None = None,
     is_multi_page_hint: bool = False,
     compare_hint: bool = False,
+    graph_relation_class: str | None = None,
     relationship_hint: bool = False,
     page_lookup_hint: bool = False,
     event_hint: bool = False,
@@ -24,6 +25,10 @@ def route_query(
     if (event_hint or any(token in normalized_lower for token in ["event", "conference", "summit", "experience", "briefing", "update", "dialogue", "week"])) and not explicit_seminar_like:
         return "event_lookup"
     if relationship_hint or any(token in query for token in ["관계", "관련성", "relationship"]):
+        if graph_relation_class == "topic_cluster_relation":
+            return "topic_cluster_lookup"
+        if graph_relation_class in {"dummy_family_relation", "standard_topic_relation", "organization_entry_relation"}:
+            return "entity_relation_lookup"
         return "relationship_query"
     if is_multi_page_hint or any(token in query for token in ["두 개", "2개", "함께", "여러 페이지"]):
         return "multi_page_lookup"

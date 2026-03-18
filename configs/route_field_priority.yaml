@@ -135,6 +135,47 @@ routes:
     min_evidence: 2
     min_distinct_entries: 2
 
+  entity_relation_lookup:
+    allowed_entry_types:
+      - seminar
+      - event
+      - knowledge
+      - index
+    allowed_chunk_types:
+      - field_chunk
+      - entry_overview_chunk
+      - knowledge_table_chunk
+      - index_lookup_chunk
+    preferred_fields:
+      - knowledge_topic
+      - page_summary
+      - description
+      - course_description
+      - overview
+      - keyword
+    deterministic_template: false
+    min_evidence: 2
+    min_distinct_entries: 2
+
+  topic_cluster_lookup:
+    allowed_entry_types:
+      - seminar
+      - event
+      - knowledge
+    allowed_chunk_types:
+      - field_chunk
+      - entry_overview_chunk
+      - knowledge_table_chunk
+    preferred_fields:
+      - overview
+      - course_description
+      - description
+      - page_summary
+      - knowledge_topic
+    deterministic_template: false
+    min_evidence: 2
+    min_distinct_entries: 2
+
   relationship_query:
     allowed_entry_types:
       - seminar

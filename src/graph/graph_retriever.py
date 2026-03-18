@@ -20,20 +20,27 @@ def _match_graph_nodes(question: str, query_profile: dict, nodes: list[dict]) ->
         ]
     )
     targets: set[tuple[str, str]] = set()
+    relation_class = query_profile.get("graph_relation_class")
     for dummy in extract_dummy_families(text):
-        targets.add(("DummyFamily", dummy))
+        if relation_class in {None, "dummy_family_relation"}:
+            targets.add(("DummyFamily", dummy))
     for standard in extract_standards(text):
-        targets.add(("Standard", standard))
+        if relation_class in {None, "standard_topic_relation"}:
+            targets.add(("Standard", standard))
     for org in extract_organizations(text):
-        targets.add(("Organization", org))
+        if relation_class in {None, "organization_entry_relation"}:
+            targets.add(("Organization", org))
     for topic in detect_query_topics(text):
-        targets.add(("Topic", topic))
+        if relation_class in {None, "topic_cluster_relation"}:
+            targets.add(("Topic", topic))
     for anchor in query_profile.get("exact_anchors", []):
         if anchor.startswith("FMVSS") or anchor.startswith("GTR") or anchor.startswith("UN R") or anchor.startswith("R"):
-            targets.add(("Standard", anchor))
+            if relation_class in {None, "standard_topic_relation"}:
+                targets.add(("Standard", anchor))
         elif anchor in {"THOR", "HIII", "ATD"}:
             canonical_dummy = "HYBRID III" if anchor == "HIII" else anchor
-            targets.add(("DummyFamily", canonical_dummy))
+            if relation_class in {None, "dummy_family_relation"}:
+                targets.add(("DummyFamily", canonical_dummy))
 
     matched: list[dict] = []
     for node in nodes:
