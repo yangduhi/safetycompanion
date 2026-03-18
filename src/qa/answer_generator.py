@@ -93,6 +93,7 @@ def select_evidence(route: str, candidates: list[dict], limit: int = 3, route_po
     selected: list[dict] = []
     seen: set[tuple] = set()
     seen_entries: set[str] = set()
+    seen_compare_targets: set[int] = set()
     min_distinct_entries = int(policy.get("min_distinct_entries", 1))
 
     for item in ranked:
@@ -103,9 +104,15 @@ def select_evidence(route: str, candidates: list[dict], limit: int = 3, route_po
             entry_id = item.get("entry_id")
             if entry_id and entry_id in seen_entries and len(ranked) > len(selected):
                 continue
+        if route == "compare":
+            compare_target_index = item.get("compare_target_index")
+            if compare_target_index and compare_target_index in seen_compare_targets and len(seen_compare_targets) < min_distinct_entries:
+                continue
         seen.add(dedupe_key)
         if item.get("entry_id"):
             seen_entries.add(item["entry_id"])
+        if route == "compare" and item.get("compare_target_index"):
+            seen_compare_targets.add(item["compare_target_index"])
         selected.append(item)
         if len(selected) >= limit:
             break

@@ -84,11 +84,9 @@ routes:
     allowed_entry_types:
       - seminar
       - event
-      - knowledge
     allowed_chunk_types:
       - field_chunk
       - entry_overview_chunk
-      - knowledge_table_chunk
     preferred_fields:
       - course_description
       - course_contents
