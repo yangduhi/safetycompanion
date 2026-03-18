@@ -5,6 +5,15 @@
 - 각 단계는 이전 단계의 gate를 통과해야만 시작할 수 있다.
 - 실패 시 다음 단계로 넘어가지 않고, 아래의 되돌아갈 단계로 복귀한다.
 
+## Current Improvement Cycle
+현재 개선 사이클의 우선순위는 아래 문서를 따른다.
+- [improvement_plan_v2.md](/D:/vscode/safetycompanion/docs/improvement_plan_v2.md)
+
+즉시 수행 대상:
+1. Baseline Freeze + Evaluator Decouple
+2. Citation / Grounding 집중 개선
+3. Retrieval top-1 / top-3 정밀화
+
 ## Phase 0. Preflight
 목적:
 - 입력 파일, 필수 도구, 권한, 기본 런타임을 확인한다.

@@ -5,6 +5,12 @@
 - 차단 이슈가 생기면 `outputs/<run_id>/blocking_issues.md`에 기록한다.
 - 미결정 항목은 `spec.md`의 결정 등록부 상태를 먼저 확인한다.
 
+## Current Improvement Cycle
+- [ ] `docs/improvement_plan_v2.md` 기준으로 현재 반복 우선순위 확인
+- [ ] `baseline_v1` freeze 완료
+- [ ] retrieval / citation / grounding evaluator 분리 완료
+- [ ] easy / medium / hard difficulty 리포트 생성 확인
+
 ## Phase 0. Preflight
 - [ ] `data/SafetyCompanion-2026.pdf` 존재 확인
 - [ ] `python --version` 통과

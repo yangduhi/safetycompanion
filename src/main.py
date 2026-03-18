@@ -13,6 +13,7 @@ from src.eval.answer_eval import evaluate_answers
 from src.eval.extraction_eval import evaluate_extraction
 from src.eval.parse_eval import evaluate_parse
 from src.eval.retrieval_eval import evaluate_retrieval
+from src.eval.reporting import markdown_from_metrics, write_baseline_snapshot, write_detail_csv
 from src.ingest.abbreviation_extractor import extract_abbreviations
 from src.ingest.calendar_extractor import extract_calendar_entries
 from src.ingest.entry_extractor import build_extraction_quality_report, extract_entries
@@ -241,6 +242,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
     abbreviations = read_jsonl(ctx.path_from_config("abbreviations"))
     calendar_entries = read_jsonl(ctx.path_from_config("calendar_entries"))
     gold_questions = read_jsonl(ctx.path_from_config("gold_questions"))
+    adversarial_questions = read_jsonl(ctx.path_from_config("adversarial_questions"))
 
     service = QueryService(ROOT, ctx.config)
 
@@ -249,31 +251,75 @@ def cmd_eval(args: argparse.Namespace) -> int:
 
     def answer_query(question: str) -> dict:
         trace = service.retrieve(question)
-        return build_grounded_answer(question, trace["route"], trace["ranked_hits"])
+        answer = build_grounded_answer(question, trace["route"], trace["ranked_hits"])
+        return {"trace": trace, "answer": answer}
 
     metrics = {}
     metrics.update(evaluate_parse(page_manifest))
     metrics.update(evaluate_extraction(entries, abbreviations, calendar_entries))
-    metrics.update(evaluate_retrieval(gold_questions, retrieve))
-    metrics.update(evaluate_answers(gold_questions, answer_query))
+    retrieval_metrics, retrieval_details = evaluate_retrieval(gold_questions, retrieve)
+    answer_metrics, answer_details = evaluate_answers(gold_questions, answer_query)
+    adversarial_retrieval_metrics, adversarial_retrieval_details = evaluate_retrieval(adversarial_questions, retrieve)
+    adversarial_answer_metrics, adversarial_answer_details = evaluate_answers(adversarial_questions, answer_query)
+    metrics.update(retrieval_metrics)
+    metrics.update(answer_metrics)
+    metrics.update({f"adversarial__{key}": value for key, value in adversarial_retrieval_metrics.items()})
+    metrics.update({f"adversarial__{key}": value for key, value in adversarial_answer_metrics.items()})
 
-    summary_lines = ["# Evaluation Summary", ""]
-    for key in sorted(metrics):
-        summary_lines.append(f"- {key}: {metrics[key]}")
     summary_path = ctx.output_path("eval_summary.md")
+    retrieval_report_path = ctx.output_path("retrieval_report.md")
+    citation_report_path = ctx.output_path("citation_report.md")
+    grounding_report_path = ctx.output_path("grounding_report.md")
+    retrieval_details_path = ctx.output_path("retrieval_details.csv")
+    citation_details_path = ctx.output_path("citation_details.csv")
+    grounding_details_path = ctx.output_path("grounding_details.csv")
     error_analysis_path = ctx.output_path("error_analysis.csv")
     failure_cases_path = ctx.output_path("failure_cases.jsonl")
 
-    write_text(summary_path, "\n".join(summary_lines) + "\n")
+    retrieval_report_metrics = {key: value for key, value in metrics.items() if key.startswith("retrieval_") or key.startswith("adversarial__retrieval_") or key in {"recall_at_10", "page_hit_rate"}}
+    citation_report_metrics = {key: value for key, value in metrics.items() if key.startswith("citation_") or key.startswith("adversarial__citation_")}
+    grounding_report_metrics = {key: value for key, value in metrics.items() if key.startswith("grounded_") or key.startswith("field_grounding_") or key.startswith("adversarial__grounded_") or key.startswith("adversarial__field_grounding_")}
+
+    write_text(summary_path, markdown_from_metrics("Evaluation Summary", metrics))
+    write_text(retrieval_report_path, markdown_from_metrics("Retrieval Report", retrieval_report_metrics))
+    write_text(citation_report_path, markdown_from_metrics("Citation Report", citation_report_metrics))
+    write_text(grounding_report_path, markdown_from_metrics("Grounding Report", grounding_report_metrics))
+    write_detail_csv(retrieval_details_path, retrieval_details + adversarial_retrieval_details)
+    write_detail_csv(citation_details_path, answer_details)
+    write_detail_csv(grounding_details_path, answer_details + adversarial_answer_details)
     write_text(error_analysis_path, "metric,value\n" + "\n".join(f"{key},{value}" for key, value in metrics.items()) + "\n")
     failures = [
         {"type": "GATE_MISS", "metric": key, "value": value}
         for key, value in metrics.items()
-        if key in {"recall_at_10", "page_hit_rate", "citation_page_hit_rate"} and float(value) < 0.8
+        if key in {"recall_at_10", "page_hit_rate", "citation_page_hit_rate", "grounded_success_rate"} and float(value) < 0.8
     ]
     write_jsonl(failure_cases_path, failures)
 
-    write_manifest_status(ctx, manifest, "success", "eval", artifacts=[summary_path, error_analysis_path, failure_cases_path], metrics=metrics)
+    baseline_artifacts: list[Path] = []
+    if args.baseline_label:
+        baseline_dir = ROOT / "docs" / "baselines"
+        baseline_json, baseline_md = write_baseline_snapshot(baseline_dir, args.baseline_label, metrics)
+        baseline_artifacts.extend([baseline_json, baseline_md])
+
+    write_manifest_status(
+        ctx,
+        manifest,
+        "success",
+        "eval",
+        artifacts=[
+            summary_path,
+            retrieval_report_path,
+            citation_report_path,
+            grounding_report_path,
+            retrieval_details_path,
+            citation_details_path,
+            grounding_details_path,
+            error_analysis_path,
+            failure_cases_path,
+            *baseline_artifacts,
+        ],
+        metrics=metrics,
+    )
     print(summary_path.read_text(encoding="utf-8"))
     return 0
 
@@ -302,6 +348,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     evaluate = subparsers.add_parser("eval")
     evaluate.add_argument("--config", default=str(default_config_path()))
+    evaluate.add_argument("--baseline-label", default=None)
     evaluate.set_defaults(func=cmd_eval)
     return parser
 
