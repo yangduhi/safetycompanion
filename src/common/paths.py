@@ -69,3 +69,11 @@ class ProjectPaths:
     @property
     def route_policy_path(self) -> Path:
         return self.path_from_config("route_field_priority", default="configs/route_field_priority.yaml")
+
+    @property
+    def graph_nodes_path(self) -> Path:
+        return self.path_from_config("graph_nodes", default="data/graph/nodes.jsonl")
+
+    @property
+    def graph_edges_path(self) -> Path:
+        return self.path_from_config("graph_edges", default="data/graph/edges.jsonl")

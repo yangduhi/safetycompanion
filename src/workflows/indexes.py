@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from src.common.pipeline import RunContext
 from src.common.runtime import write_json, write_jsonl, write_text
+from src.graph.graph_builder import build_graph, graph_schema_markdown
 from src.retrieval.build_indexes import build_bm25_store, build_dense_store, persist_lookup_store
 from src.retrieval.chunker import build_chunks
 from src.retrieval.lookup_stores import build_abbreviation_lookup, build_calendar_lookup, build_index_lookup
@@ -42,6 +43,16 @@ def run_build_indexes(ctx: RunContext) -> WorkflowResult:
     persist_lookup_store(build_index_lookup(back_index), paths.back_index_lookup_store)
     persist_lookup_store(build_calendar_lookup(calendar_entries), paths.calendar_lookup_store)
 
+    graph_enabled = bool(ctx.config.get("features", "graph_rag", default=False))
+    graph_schema_path = ctx.output_path("graph_schema.md")
+    graph_artifacts = []
+    if graph_enabled:
+        nodes, edges = build_graph(entries)
+        write_jsonl(paths.graph_nodes_path, nodes)
+        write_jsonl(paths.graph_edges_path, edges)
+        write_text(graph_schema_path, graph_schema_markdown(nodes, edges))
+        graph_artifacts.extend([paths.graph_nodes_path, paths.graph_edges_path, graph_schema_path])
+
     service = QueryService(ctx.root, ctx.config)
     smoke_questions = [
         "FMVSS 305a 관련 세미나를 찾아줘",
@@ -65,11 +76,12 @@ def run_build_indexes(ctx: RunContext) -> WorkflowResult:
         "chunk_count": len(chunks),
         "embedding_backend": "tfidf_svd",
         "bm25_backend": "rank_bm25",
+        "graph_enabled": graph_enabled,
     }
     write_json(build_manifest_path, build_manifest)
 
     return WorkflowResult(
-        artifacts=[ctx.path_from_config("chunks"), build_manifest_path, smoke_report_path],
-        metrics={"chunk_count": len(chunks)},
+        artifacts=[ctx.path_from_config("chunks"), build_manifest_path, smoke_report_path, *graph_artifacts],
+        metrics={"chunk_count": len(chunks), "graph_enabled": graph_enabled},
         output_text=f"Index build complete. Run: {ctx.run_id}",
     )
