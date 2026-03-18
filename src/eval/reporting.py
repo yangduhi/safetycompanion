@@ -4,6 +4,7 @@ import csv
 import re
 from pathlib import Path
 
+from src.common.runtime import branch_slug, current_git_branch
 from src.common.runtime import ensure_dir, write_json, write_text
 
 
@@ -34,7 +35,9 @@ def freeze_baseline_markdown(label: str, metrics: dict[str, float]) -> str:
 
 
 def write_baseline_snapshot(base_dir: Path, label: str, metrics: dict[str, float]) -> tuple[Path, Path]:
-    ensure_dir(base_dir)
+    root = base_dir.parent.parent if base_dir.name == "baselines" else base_dir.parent
+    active_branch = branch_slug(current_git_branch(root))
+    base_dir = ensure_dir(base_dir.parent / "branches" / active_branch / "baselines")
     json_path = base_dir / f"{label}.json"
     md_path = base_dir / f"{label}.md"
     write_json(json_path, metrics)

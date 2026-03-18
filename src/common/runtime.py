@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
@@ -27,6 +28,25 @@ def now_utc_iso() -> str:
 def generate_run_id(source_hash: str) -> str:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     return f"{timestamp}_{source_hash[:8]}"
+
+
+def current_git_branch(root: Path) -> str:
+    try:
+        result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        branch = result.stdout.strip()
+        return branch or "detached"
+    except Exception:
+        return "unknown"
+
+
+def branch_slug(branch_name: str) -> str:
+    return branch_name.replace("/", "__").replace("\\", "__")
 
 
 def write_json(path: Path, payload: Any) -> None:

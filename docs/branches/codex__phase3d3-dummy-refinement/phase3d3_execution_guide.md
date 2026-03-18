@@ -1,7 +1,7 @@
 # Phase 3D-3 Execution Guide
 
 ## 목표
-dummy grouping refinement v2와 event paraphrase closure를 통해 남은 hard slice를 더 줄인다.
+dummy grouping refinement v2와 event paraphrase closure를 통해 남아 있는 hard slice를 더 줄인다.
 
 ## 이번 반복의 범위
 1. dummy cluster canonicalization 보강

@@ -20,6 +20,7 @@
 - [tasks.md](/D:/vscode/safetycompanion/tasks.md): 실제 작업 체크리스트
 - [work_process/README.md](/D:/vscode/safetycompanion/work_process/README.md): step 문서 사용 규칙
 - [git_workflow.md](/D:/vscode/safetycompanion/docs/git_workflow.md): 기준 브랜치와 향후 작업 브랜치 운영 규칙
+- [branches/README.md](/D:/vscode/safetycompanion/docs/branches/README.md): 브랜치별 생성 문서 저장 규칙
 
 ## 입력 데이터
 - 필수 입력 PDF: [data/SafetyCompanion-2026.pdf](/D:/vscode/safetycompanion/data/SafetyCompanion-2026.pdf)
