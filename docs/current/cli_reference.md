@@ -4,6 +4,7 @@
 
 - 기본 진입점은 `python -m src.main`
 - 운영 기본 config는 `configs/prod.yaml`
+- graph 실험 config는 `configs/exp_graph.yaml`
 - 모든 실행은 `outputs/<run_id>/...` 아래에 실행별 산출물을 남긴다
 - 안정 데이터와 인덱스는 `data/*`, `indexes/*`에 갱신된다
 
@@ -57,6 +58,7 @@ python -m src.main ingest --pdf data/SafetyCompanion-2026.pdf --config configs/p
 
 ```powershell
 python -m src.main build-indexes --config configs/prod.yaml
+python -m src.main build-indexes --config configs/exp_graph.yaml
 ```
 
 주요 산출물:
@@ -69,6 +71,11 @@ python -m src.main build-indexes --config configs/prod.yaml
 - `indexes/lookup/calendar.json`
 - `outputs/<run_id>/index_build_manifest.json`
 - `outputs/<run_id>/retrieval_smoke_test.md`
+
+graph 실험 config 사용 시 추가 산출물:
+- `data/graph/nodes.jsonl`
+- `data/graph/edges.jsonl`
+- `outputs/<run_id>/graph_schema.md`
 
 ## `query`
 
@@ -102,6 +109,7 @@ python -m src.main query "AEB 는 무엇인가?" --config configs/prod.yaml
 ```powershell
 python -m src.main eval --config configs/prod.yaml
 python -m src.main eval --config configs/prod.yaml --baseline-label baseline_v6
+python -m src.main eval --config configs/exp_graph.yaml
 ```
 
 주요 산출물:
@@ -114,6 +122,11 @@ python -m src.main eval --config configs/prod.yaml --baseline-label baseline_v6
 - `outputs/<run_id>/grounding_details.csv`
 - `outputs/<run_id>/failure_cases.jsonl`
 - 선택 시 `docs/baselines/<label>.json`, `docs/baselines/<label>.md`
+
+graph 실험 config 사용 시 추가 산출물:
+- `outputs/<run_id>/graph_eval.md`
+- `outputs/<run_id>/graph_route_details.csv`
+- `outputs/<run_id>/graph_failure_cases.jsonl`
 
 ## 테스트
 

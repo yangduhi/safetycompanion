@@ -23,6 +23,8 @@
 - `data/processed/calendar_entries.jsonl`
 - `data/processed/page_links.jsonl`
 - `data/processed/chunks.jsonl`
+- `data/graph/nodes.jsonl`
+- `data/graph/edges.jsonl`
 - `outputs/<run_id>/run_manifest.json`
 
 ## 3. Page Manifest
@@ -135,3 +137,40 @@
 - `pdf_page`와 `printed_page`의 의미를 바꾸지 않는다.
 - 기존 핵심 필드는 이름을 임의 변경하지 않는다.
 - 새로운 필드 추가는 허용하지만, 기존 evaluator와 query path를 깨지 않아야 한다.
+
+## 9. Graph Artifact Contract
+
+graph 실험 config에서만 아래 산출물을 사용한다.
+
+### Graph Node
+
+핵심 필드:
+
+- `node_id`
+- `node_type`
+- `name`
+- `canonical_name`
+- `source_entry_ids`
+- `source_pages`
+- `source_fields`
+- `confidence`
+
+### Graph Edge
+
+핵심 필드:
+
+- `edge_id`
+- `edge_type`
+- `source_id`
+- `target_id`
+- `source_entry_id`
+- `source_page`
+- `source_field`
+- `provenance_text`
+- `extraction_method`
+- `confidence`
+
+설명:
+
+- graph edge는 반드시 provenance를 가져야 한다.
+- graph 결과는 최종 답변 전에 entry/page evidence로 backfill되어야 한다.

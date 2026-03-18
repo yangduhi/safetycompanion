@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 
+from src.graph.catalog import detect_query_topics, extract_dummy_families, extract_organizations, extract_standards
+
 
 KOREAN_EXPANSIONS = {
     "관련 과정": ["course", "seminar", "training"],
@@ -97,11 +99,11 @@ def expand_korean_terms(text: str) -> list[str]:
 
 def normalize_exact_anchors(text: str) -> str:
     normalized = text
-    normalized = re.sub(r"\bfmvss\s*([0-9]{2,3}[a-z]?)\b", lambda m: f"FMVSS {m.group(1).upper()}", normalized, flags=re.IGNORECASE)
-    normalized = re.sub(r"\bgtr\s*([0-9]{1,2})\b", lambda m: f"GTR {m.group(1)}", normalized, flags=re.IGNORECASE)
-    normalized = re.sub(r"\br\s*([0-9]{2,3}[a-z]?)\b", lambda m: f"R{m.group(1).upper()}", normalized, flags=re.IGNORECASE)
-    normalized = re.sub(r"\bfmvss([0-9]{2,3}[a-z]?)\b", lambda m: f"FMVSS {m.group(1).upper()}", normalized, flags=re.IGNORECASE)
-    normalized = re.sub(r"\bgtr([0-9]{1,2})\b", lambda m: f"GTR {m.group(1)}", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"\bfmvss\s*([0-9]{2,3}[a-z]?)(?=[^A-Za-z0-9]|$)", lambda m: f"FMVSS {m.group(1).upper()}", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"\bgtr\s*([0-9]{1,2})(?=[^A-Za-z0-9]|$)", lambda m: f"GTR {m.group(1)}", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"\br\s*([0-9]{2,3}[a-z]?)(?=[^A-Za-z0-9]|$)", lambda m: f"R{m.group(1).upper()}", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"\bfmvss([0-9]{2,3}[a-z]?)(?=[^A-Za-z0-9]|$)", lambda m: f"FMVSS {m.group(1).upper()}", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"\bgtr([0-9]{1,2})(?=[^A-Za-z0-9]|$)", lambda m: f"GTR {m.group(1)}", normalized, flags=re.IGNORECASE)
     return normalized
 
 
@@ -115,7 +117,7 @@ def apply_exact_anchor_aliases(text: str) -> tuple[str, list[str]]:
 
 
 def extract_exact_anchors(text: str) -> list[str]:
-    anchors = re.findall(r"\b(?:FMVSS\s*\d+[A-Z]?|GTR\s*\d+|R\d+[A-Z]?|AEB|ADAS|THOR|HIII|ATD)\b", text, flags=re.IGNORECASE)
+    anchors = re.findall(r"\b(?:FMVSS\s*\d+[A-Z]?|GTR\s*\d+|R\d+[A-Z]?|AEB|ADAS|THOR|HIII|ATD)(?=[^A-Za-z0-9]|$)", text, flags=re.IGNORECASE)
     cleaned = []
     for anchor in anchors:
         anchor = re.sub(r"\s+", " ", anchor.strip()).upper()
@@ -212,6 +214,34 @@ def is_event_hint(normalized_query: str) -> bool:
     return any(alias in lower for alias in EVENT_ALIASES)
 
 
+def is_relationship_hint(original_query: str, normalized_query: str, exact_anchors: list[str]) -> bool:
+    text = f"{original_query} {normalized_query}"
+    lowered = text.lower()
+    relation_tokens = [
+        "관계",
+        "관련성",
+        "관련된 엔트리",
+        "관련 엔트리",
+        "연관된 엔트리",
+        "속한 엔트리",
+        "topic",
+        "relationship",
+        "related entries",
+        "related entry",
+        "belongs to topic",
+    ]
+    has_entry_request = "엔트리" in text or "entry" in lowered or "entries" in lowered
+    has_relation_token = any(token in lowered for token in relation_tokens)
+    if has_relation_token or has_entry_request:
+        if exact_anchors:
+            return True
+        if detect_query_topics(text):
+            return True
+        if extract_dummy_families(text) or extract_standards(text) or extract_organizations(text):
+            return True
+    return False
+
+
 def build_query_profile(query: str) -> dict:
     collapsed = collapse_spaced_acronyms(query)
     normalized_anchors = normalize_exact_anchors(collapsed)
@@ -251,6 +281,7 @@ def build_query_profile(query: str) -> dict:
         "compare_hint": is_compare_hint(alias_query, compare_targets),
         "page_lookup_hint": is_page_lookup_hint(query, bilingual_query),
         "event_hint": is_event_hint(bilingual_query),
+        "relationship_hint": is_relationship_hint(query, bilingual_query, exact_anchors),
         "exact_anchors": exact_anchors,
         "dummy_anchor_hints": dummy_anchor_hints,
         "dummy_anchor_clusters": dummy_anchor_clusters,

@@ -28,6 +28,7 @@ def evaluate_retrieval(gold_questions: list[dict], retrieve: Callable[[str], dic
         results = trace["ranked_hits"][:10]
         pre_rerank = trace.get("fused_hits", [])[:10]
         group_debug = trace.get("group_debug") or {}
+        graph_debug = trace.get("graph_debug") or {}
         expected_pages = set(question.get("expected_pdf_pages", []))
         expected_titles = question.get("expected_titles", [])
         top1 = results[:1]
@@ -55,6 +56,8 @@ def evaluate_retrieval(gold_questions: list[dict], retrieve: Callable[[str], dic
                 "route_name": trace.get("route"),
                 "normalized_query": trace.get("normalized_query"),
                 "expected_pdf_pages": sorted(expected_pages),
+                "qid": question.get("qid"),
+                "graph_route_type": question.get("graph_route_type"),
                 "top1_hit": top1_hit,
                 "top3_hit": bool(expected_pages & top3_pages or _title_hit(expected_titles, top3_titles)),
                 "top10_hit": bool(expected_pages & top10_pages or _title_hit(expected_titles, top10_titles)),
@@ -73,6 +76,8 @@ def evaluate_retrieval(gold_questions: list[dict], retrieve: Callable[[str], dic
                 "rejected_secondary_pages": "|".join(str(page) for page in group_debug.get("rejected_secondary_pages", [])),
                 "rejected_secondary_titles": " | ".join(str(title) for title in group_debug.get("rejected_secondary_titles", [])),
                 "page_role_summary": " | ".join(str(item) for item in group_debug.get("page_role_summary", [])),
+                "graph_nodes_hit": len(graph_debug.get("matched_nodes", [])) if graph_debug else 0,
+                "graph_edges_hit": int(graph_debug.get("matched_edges_count", 0)) if graph_debug else 0,
             }
         )
 

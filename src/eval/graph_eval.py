@@ -85,3 +85,53 @@ def graph_failure_markdown(rows: list[dict]) -> str:
     for row in rows[:20]:
         lines.append(f"- {row.get('graph_failure_type')}: {row.get('query')} -> {row.get('top_result_title')}")
     return "\n".join(lines) + "\n"
+
+
+def merge_graph_rows(retrieval_details: list[dict], answer_details: list[dict]) -> list[dict]:
+    answer_by_question = {row["question"]: row for row in answer_details}
+    rows: list[dict] = []
+    for row in retrieval_details:
+        answer = answer_by_question.get(row["question"], {})
+        rows.append(
+            {
+                "qid": row.get("qid"),
+                "query": row.get("question"),
+                "query_type": row.get("question_type"),
+                "graph_route_type": row.get("graph_route_type"),
+                "top1_hit": row.get("top1_hit", False),
+                "top3_hit": row.get("top3_hit", False),
+                "graph_nodes_hit": row.get("graph_nodes_hit", 0),
+                "graph_edges_hit": row.get("graph_edges_hit", 0),
+                "backfill_success": answer.get("graph_backfill_success", False),
+                "grounded_success": answer.get("grounded_success", False),
+                "top_result_title": row.get("top_result_title"),
+                "top_result_page": row.get("top_result_page"),
+                "mainline_regression": False,
+            }
+        )
+    return rows
+
+
+def build_graph_failure_rows(rows: list[dict]) -> list[dict]:
+    failures: list[dict] = []
+    for row in rows:
+        failure_type = None
+        if not row.get("graph_nodes_hit"):
+            failure_type = "GRAPH_ENTITY_MISS"
+        elif not row.get("top3_hit"):
+            failure_type = "GRAPH_FALSE_RELATION"
+        elif not row.get("backfill_success"):
+            failure_type = "GRAPH_BACKFILL_FAIL"
+        elif not row.get("grounded_success"):
+            failure_type = "GRAPH_SUMMARY_UNGROUNDED"
+
+        if failure_type:
+            failures.append(
+                {
+                    "qid": row.get("qid"),
+                    "query": row.get("query"),
+                    "graph_failure_type": failure_type,
+                    "top_result_title": row.get("top_result_title"),
+                }
+            )
+    return failures

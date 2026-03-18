@@ -7,6 +7,7 @@ from src.common.runtime import write_jsonl, write_text
 from src.eval.answer_eval import evaluate_answers
 from src.eval.error_taxonomy import build_error_taxonomy, error_taxonomy_markdown
 from src.eval.extraction_eval import evaluate_extraction
+from src.eval.graph_eval import build_graph_failure_rows, compute_graph_metrics, graph_eval_markdown, graph_failure_markdown, merge_graph_rows
 from src.eval.parse_eval import evaluate_parse
 from src.eval.reporting import (
     contains_korean,
@@ -32,8 +33,20 @@ def run_evaluation(ctx: RunContext, baseline_label: str | None = None) -> Workfl
     gold_questions = ctx.read_jsonl("gold_questions")
     adversarial_questions = ctx.read_jsonl("adversarial_questions")
     multi_page_hard_questions = ctx.read_jsonl("multi_page_hard_questions")
+    graph_hard_questions = ctx.read_jsonl("graph_hard_questions")
+    graph_eval_questions = [
+        {
+            **row,
+            "question": row.get("question") or row.get("query"),
+            "question_type": row.get("question_type") or row.get("query_type"),
+            "expected_pdf_pages": row.get("expected_pdf_pages") or row.get("expected_pages") or [],
+            "expected_titles": row.get("expected_titles") or [],
+        }
+        for row in graph_hard_questions
+    ]
 
     service = QueryService(ctx.root, ctx.config)
+    graph_enabled = bool(ctx.config.get("features", "graph_rag", default=False))
 
     def retrieve(question: str) -> dict:
         return service.retrieve(question)
@@ -58,6 +71,27 @@ def run_evaluation(ctx: RunContext, baseline_label: str | None = None) -> Workfl
     metrics.update({f"adversarial__{key}": value for key, value in adversarial_answer_metrics.items()})
     metrics.update({f"multi_page_hard__{key}": value for key, value in multi_page_hard_retrieval_metrics.items()})
     metrics.update({f"multi_page_hard__{key}": value for key, value in multi_page_hard_answer_metrics.items()})
+    graph_rows: list[dict] = []
+    graph_failures: list[dict] = []
+    graph_eval_path = ctx.output_path("graph_eval.md")
+    graph_route_details_path = ctx.output_path("graph_route_details.csv")
+    graph_failure_cases_path = ctx.output_path("graph_failure_cases.jsonl")
+    if graph_enabled and graph_eval_questions:
+        graph_retrieval_metrics, graph_retrieval_details = evaluate_retrieval(graph_eval_questions, retrieve)
+        graph_answer_metrics, graph_answer_details = evaluate_answers(graph_eval_questions, answer_query)
+        graph_rows = merge_graph_rows(graph_retrieval_details, graph_answer_details)
+        graph_failures = build_graph_failure_rows(graph_rows)
+        graph_metrics = compute_graph_metrics(graph_rows)
+        metrics.update({f"graph__{key}": value for key, value in graph_retrieval_metrics.items()})
+        metrics.update({f"graph__{key}": value for key, value in graph_answer_metrics.items()})
+        metrics.update(graph_metrics)
+        write_text(graph_eval_path, graph_eval_markdown(graph_metrics))
+        write_detail_csv(graph_route_details_path, graph_rows)
+        write_jsonl(graph_failure_cases_path, graph_failures)
+    else:
+        graph_eval_path = None
+        graph_route_details_path = None
+        graph_failure_cases_path = None
 
     summary_path = ctx.output_path("eval_summary.md")
     retrieval_report_path = ctx.output_path("retrieval_report.md")
@@ -195,6 +229,7 @@ def run_evaluation(ctx: RunContext, baseline_label: str | None = None) -> Workfl
         if key in {"recall_at_10", "page_hit_rate", "citation_page_hit_rate", "grounded_success_rate"} and float(value) < 0.8
     ]
     failures.extend(taxonomy_rows)
+    failures.extend(graph_failures)
     write_jsonl(failure_cases_path, failures)
 
     baseline_artifacts: list[Path] = []
@@ -237,6 +272,8 @@ def run_evaluation(ctx: RunContext, baseline_label: str | None = None) -> Workfl
         failure_cases_path,
         *baseline_artifacts,
     ]
+    if graph_eval_path:
+        artifacts.extend([graph_eval_path, graph_route_details_path, graph_failure_cases_path])
     return WorkflowResult(
         artifacts=artifacts,
         metrics=metrics,

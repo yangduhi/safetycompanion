@@ -7,6 +7,7 @@ from src.common.config import LoadedConfig
 from src.common.paths import ProjectPaths
 from src.common.policy import load_route_policy, normalize_abbreviation_key, route_policy_for
 from src.common.runtime import read_jsonl
+from src.graph.graph_retriever import retrieve_graph_paths
 from src.common.text import tokenize
 from src.retrieval.compare_ranking import compare_pair_success, select_compare_pairs
 from src.retrieval.multipage_grouping import (
@@ -30,6 +31,12 @@ class QueryService:
         self.paths = ProjectPaths(root, config)
         self.chunks = read_jsonl(self.paths.path_from_config("chunks"))
         self.entries = read_jsonl(self.paths.path_from_config("entries"))
+        self.entries_by_id = {entry["entry_id"]: entry for entry in self.entries if entry.get("entry_id")}
+        self.chunks_by_entry_id: dict[str, list[dict]] = {}
+        for chunk in self.chunks:
+            entry_id = chunk.get("entry_id")
+            if entry_id:
+                self.chunks_by_entry_id.setdefault(entry_id, []).append(chunk)
         self.dense_entry_store = self.paths.dense_entry_index
         self.dense_field_store = self.paths.dense_field_index
         self.bm25_store = self.paths.bm25_index
@@ -37,6 +44,9 @@ class QueryService:
         self.index_lookup = load_lookup_store(self.paths.back_index_lookup_store)
         self.calendar_lookup = load_lookup_store(self.paths.calendar_lookup_store)
         self.route_policy = load_route_policy(root, config)
+        self.graph_enabled = bool(self.config.get("features", "graph_rag", default=False))
+        self.graph_nodes = read_jsonl(self.paths.graph_nodes_path) if self.graph_enabled and self.paths.graph_nodes_path.exists() else []
+        self.graph_edges = read_jsonl(self.paths.graph_edges_path) if self.graph_enabled and self.paths.graph_edges_path.exists() else []
 
     def _search_dense_collection(self, query: str, top_k: int) -> tuple[list[dict], list[dict]]:
         dense_entry = search_dense(self.dense_entry_store, query, top_k) if self.dense_entry_store.exists() else []
@@ -497,6 +507,75 @@ class QueryService:
             return pair
         return ranked[:top_n]
 
+    def _best_chunk_for_entry(self, entry_id: str, route: str = "relationship_query") -> dict | None:
+        candidates = self.chunks_by_entry_id.get(entry_id, [])
+        if not candidates:
+            return None
+        preferred_fields = route_policy_for(self.route_policy, route).get("preferred_fields", [])
+        preferred_chunk_types = {"field_chunk", "entry_overview_chunk", "knowledge_table_chunk"}
+
+        def field_rank(chunk: dict) -> int:
+            field_name = chunk.get("field_name")
+            if field_name in preferred_fields:
+                return preferred_fields.index(field_name)
+            return len(preferred_fields) + 10
+
+        filtered = [chunk for chunk in candidates if chunk.get("chunk_type") in preferred_chunk_types]
+        ranked = sorted(filtered or candidates, key=lambda chunk: (field_rank(chunk), len(str(chunk.get("text", "")))))
+        return ranked[0] if ranked else None
+
+    def _backfill_graph_hits(self, graph_trace: dict) -> list[dict]:
+        backfilled: list[dict] = []
+        for hit in graph_trace.get("entry_hits", []):
+            entry_id = hit.get("entry_id")
+            if not entry_id:
+                continue
+            chunk = self._best_chunk_for_entry(entry_id, route="relationship_query")
+            entry = self.entries_by_id.get(entry_id)
+            if chunk:
+                row = dict(chunk)
+            elif entry:
+                row = {
+                    "chunk_id": f"graph_backfill_{entry_id}",
+                    "entry_id": entry_id,
+                    "entry_type": entry.get("entry_type"),
+                    "chunk_type": "entry_overview_chunk",
+                    "field_name": "overview",
+                    "title": entry.get("title"),
+                    "pdf_page": (entry.get("source_pages") or [None])[0],
+                    "printed_page": (entry.get("printed_pages") or [None])[0],
+                    "section_l1": entry.get("section_l1"),
+                    "text": entry.get("summary", ""),
+                }
+            else:
+                continue
+
+            row["score"] = float(hit.get("score", 0.0)) + 2.0
+            row["graph_score"] = float(hit.get("score", 0.0))
+            row["graph_match_names"] = hit.get("matched_node_names", [])
+            row["graph_match_types"] = hit.get("matched_node_types", [])
+            row["graph_edge_types"] = hit.get("matched_edge_types", [])
+            row["graph_backfill_success"] = True
+            row["graph_source_pages"] = hit.get("source_pages", [])
+            backfilled.append(row)
+        return backfilled
+
+    def _relationship_query_results(self, query: str, query_profile: dict, top_n: int) -> tuple[list[dict], dict]:
+        if not self.graph_enabled or not self.graph_nodes or not self.graph_edges:
+            return [], {"graph_enabled": False, "matched_nodes": [], "matched_edges": [], "entry_hits": []}
+        graph_trace = retrieve_graph_paths(query, query_profile, self.graph_nodes, self.graph_edges)
+        backfilled = self._backfill_graph_hits(graph_trace)
+        ranked = sorted(backfilled, key=lambda row: float(row.get("graph_score", row.get("score", 0.0))), reverse=True)[:top_n]
+        graph_debug = {
+            "graph_enabled": True,
+            "matched_nodes": [node.get("name") for node in graph_trace.get("matched_nodes", [])],
+            "matched_edges_count": len(graph_trace.get("matched_edges", [])),
+            "matched_entry_ids": [row.get("entry_id") for row in graph_trace.get("entry_hits", [])],
+            "backfilled_entry_ids": [row.get("entry_id") for row in ranked],
+            "backfill_success": bool(ranked),
+        }
+        return ranked, graph_debug
+
     def retrieve(self, query: str) -> dict:
         query_profile = build_query_profile(query)
         search_query = query_profile.get("normalized_query", query)
@@ -505,6 +584,7 @@ class QueryService:
             normalized_query=search_query,
             is_multi_page_hint=query_profile.get("is_multi_page_hint", False),
             compare_hint=query_profile.get("compare_hint", False),
+            relationship_hint=query_profile.get("relationship_hint", False),
             page_lookup_hint=query_profile.get("page_lookup_hint", False),
             event_hint=query_profile.get("event_hint", False),
         )
@@ -512,6 +592,27 @@ class QueryService:
         lexical_top_k = self.config.get("retrieval", "lexical_top_k", default=8)
         final_top_n = self.config.get("retrieval", "final_top_n", default=5)
         rrf_k = self.config.get("retrieval", "rrf_k", default=60)
+
+        if route == "relationship_query":
+            relationship_hits, graph_debug = self._relationship_query_results(query, query_profile, final_top_n)
+            if relationship_hits:
+                return {
+                    "route": route,
+                    "query_profile": query_profile,
+                    "normalized_query": search_query,
+                    "page_targets": sorted({item.get("pdf_page") for item in relationship_hits if item.get("pdf_page") is not None}),
+                    "dense_entry_hits": [],
+                    "dense_field_hits": [],
+                    "bm25_hits": [],
+                    "lookup_hits": [],
+                    "anchor_hits": [],
+                    "fused_hits": relationship_hits,
+                    "ranked_hits": relationship_hits,
+                    "compare_pair_success": None,
+                    "group_debug": None,
+                    "graph_debug": graph_debug,
+                    "policy": route_policy_for(self.route_policy, route),
+                }
 
         dense_entry, dense_field = self._search_dense_collection(search_query, dense_top_k)
         bm25 = search_bm25(self.bm25_store, search_query, lexical_top_k) if self.bm25_store.exists() else []
@@ -569,5 +670,6 @@ class QueryService:
             "ranked_hits": ranked,
             "compare_pair_success": compare_pair_success(ranked, required_targets=2) if route == "compare" else None,
             "group_debug": group_debug,
+            "graph_debug": None,
             "policy": route_policy_for(self.route_policy, route),
         }
