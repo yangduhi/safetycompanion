@@ -81,3 +81,7 @@ def write_reranker_ablation(path: Path, rows: list[dict]) -> None:
 
 def contains_korean(text: str | None) -> bool:
     return bool(text and re.search(r"[가-힣]", text))
+
+
+def matches_exact_anchor(text: str | None) -> bool:
+    return bool(text and re.search(r"(fmvss\s*\d+[a-z]?|fmvss\d+[a-z]?|gtr\s*\d+|gtr\d+|adas|aeb|thor)", text, re.IGNORECASE))
