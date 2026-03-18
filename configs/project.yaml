@@ -1,0 +1,58 @@
+document:
+  id: safetycompanion-2026
+  title: SafetyCompanion 2026
+  pdf_path: data/SafetyCompanion-2026.pdf
+  language: en
+
+paths:
+  source_map: data/raw/source_page_map.jsonl
+  page_manifest: data/parsed/page_manifest.jsonl
+  page_blocks: data/parsed/page_blocks.jsonl
+  entries: data/processed/entries.jsonl
+  abbreviations: data/processed/abbreviations.jsonl
+  back_index: data/processed/back_index.jsonl
+  calendar_entries: data/processed/calendar_entries.jsonl
+  page_links: data/processed/page_links.jsonl
+  chunks: data/processed/chunks.jsonl
+  graph_nodes: data/graph/nodes.jsonl
+  graph_edges: data/graph/edges.jsonl
+  gold_questions: data/eval/gold_questions.jsonl
+  adversarial_questions: data/eval/adversarial_questions.jsonl
+
+page_taxonomy:
+  primary_corpus:
+    - seminar
+    - event
+    - knowledge
+    - abbreviations
+    - index
+  lookup_only:
+    - calendar
+  excluded:
+    - cover_or_brand
+    - navigator_or_guide
+    - preface_or_meta
+    - terms
+    - advertisers_directory
+    - advertisement
+    - low_text_image
+
+parse:
+  prefer_pdftotext: true
+  low_text_word_threshold: 25
+  review_queue_max_examples: 50
+
+retrieval:
+  dense_top_k: 8
+  lexical_top_k: 8
+  lookup_top_k: 5
+  final_top_n: 5
+  rrf_k: 60
+  dense_index:
+    vectorizer_max_features: 5000
+    svd_components: 128
+
+runtime:
+  output_root: outputs
+  latest_alias: outputs/latest
+  persist_latest_alias: false

@@ -1,0 +1,1 @@
+"""SafetyCompanion RAG package."""

@@ -1,0 +1,58 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "CLI: Preflight",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.main",
+      "args": [
+        "preflight"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "CLI: Ingest",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.main",
+      "args": [
+        "ingest",
+        "--pdf",
+        "data/SafetyCompanion-2026.pdf",
+        "--config",
+        "configs/prod.yaml"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "CLI: Query",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.main",
+      "args": [
+        "query",
+        "FMVSS 305a 관련 세미나를 찾아줘",
+        "--config",
+        "configs/prod.yaml"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "CLI: Eval",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.main",
+      "args": [
+        "eval",
+        "--config",
+        "configs/prod.yaml"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    }
+  ]
+}

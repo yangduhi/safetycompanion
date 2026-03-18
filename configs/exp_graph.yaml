@@ -1,0 +1,6 @@
+extends: prod.yaml
+
+features:
+  llm_fallback: false
+  graph_rag: true
+  contextual_compression: false

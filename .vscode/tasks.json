@@ -1,0 +1,40 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Preflight",
+      "type": "shell",
+      "command": "python -m src.main preflight",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Ingest PDF",
+      "type": "shell",
+      "command": "python -m src.main ingest --pdf data/SafetyCompanion-2026.pdf --config configs/prod.yaml",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Build Indexes",
+      "type": "shell",
+      "command": "python -m src.main build-indexes --config configs/prod.yaml",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Eval",
+      "type": "shell",
+      "command": "python -m src.main eval --config configs/prod.yaml",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Pytest",
+      "type": "shell",
+      "command": "python -m pytest",
+      "group": "test",
+      "problemMatcher": []
+    }
+  ]
+}

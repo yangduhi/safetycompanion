@@ -1,0 +1,14 @@
+extends: project.yaml
+
+features:
+  llm_fallback: false
+  graph_rag: false
+  contextual_compression: false
+
+query:
+  default_language: ko
+  citation_format: title_pdf_printed
+
+artifacts:
+  write_query_traces: true
+  write_run_manifest: true
