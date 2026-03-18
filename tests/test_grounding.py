@@ -58,7 +58,7 @@ def test_abbreviation_route_uses_template_answer():
 
 def test_compare_route_requires_multiple_evidence():
     route_policy = {
-        "compare_or_recommend": {
+        "compare": {
             "preferred_fields": ["course_description", "overview"],
             "deterministic_template": False,
             "min_evidence": 2,
@@ -67,7 +67,7 @@ def test_compare_route_requires_multiple_evidence():
     }
     answer = build_grounded_answer(
         "두 세미나를 비교해줘",
-        "compare_or_recommend",
+        "compare",
         [
             {
                 "title": "Seminar A",

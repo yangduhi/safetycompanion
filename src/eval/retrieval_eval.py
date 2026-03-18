@@ -11,7 +11,7 @@ def _title_hit(expected_titles: list[str], titles: list[str]) -> bool:
     return any(any(expected in title for expected in lowered_expected) for title in lowered_titles)
 
 
-def evaluate_retrieval(gold_questions: list[dict], retrieve: Callable[[str], list[dict]]) -> tuple[dict, list[dict]]:
+def evaluate_retrieval(gold_questions: list[dict], retrieve: Callable[[str], dict]) -> tuple[dict, list[dict]]:
     if not gold_questions:
         return (
             {
@@ -24,12 +24,15 @@ def evaluate_retrieval(gold_questions: list[dict], retrieve: Callable[[str], lis
         )
     details: list[dict] = []
     for question in gold_questions:
-        results = retrieve(question["question"])[:10]
+        trace = retrieve(question["question"])
+        results = trace["ranked_hits"][:10]
+        pre_rerank = trace.get("fused_hits", [])[:10]
         expected_pages = set(question.get("expected_pdf_pages", []))
         expected_titles = question.get("expected_titles", [])
         top1 = results[:1]
         top3 = results[:3]
         top10 = results[:10]
+        pre_top1 = pre_rerank[:1]
 
         top1_pages = {row.get("pdf_page") for row in top1}
         top3_pages = {row.get("pdf_page") for row in top3}
@@ -37,19 +40,28 @@ def evaluate_retrieval(gold_questions: list[dict], retrieve: Callable[[str], lis
         top1_titles = [str(row.get("title", "")) for row in top1]
         top3_titles = [str(row.get("title", "")) for row in top3]
         top10_titles = [str(row.get("title", "")) for row in top10]
+        pre_top1_pages = {row.get("pdf_page") for row in pre_top1}
+        pre_top1_titles = [str(row.get("title", "")) for row in pre_top1]
+
+        top1_hit = bool(expected_pages & top1_pages or _title_hit(expected_titles, top1_titles))
+        pre_top1_hit = bool(expected_pages & pre_top1_pages or _title_hit(expected_titles, pre_top1_titles))
 
         details.append(
             {
                 "question": question["question"],
                 "difficulty": question.get("difficulty", "unknown"),
                 "question_type": question.get("question_type", "unknown"),
+                "route_name": trace.get("route"),
+                "normalized_query": trace.get("normalized_query"),
                 "expected_pdf_pages": sorted(expected_pages),
-                "top1_hit": bool(expected_pages & top1_pages or _title_hit(expected_titles, top1_titles)),
+                "top1_hit": top1_hit,
                 "top3_hit": bool(expected_pages & top3_pages or _title_hit(expected_titles, top3_titles)),
                 "top10_hit": bool(expected_pages & top10_pages or _title_hit(expected_titles, top10_titles)),
                 "page_hit_top10": bool(expected_pages & top10_pages),
                 "top_result_title": top1_titles[0] if top1_titles else None,
                 "top_result_page": next(iter(top1_pages), None) if top1_pages else None,
+                "pre_rerank_top1_hit": pre_top1_hit,
+                "rerank_improved_top1": top1_hit and not pre_top1_hit,
             }
         )
 

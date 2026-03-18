@@ -80,7 +80,7 @@ routes:
     min_evidence: 1
     min_distinct_entries: 1
 
-  compare_or_recommend:
+  compare:
     allowed_entry_types:
       - seminar
       - event
@@ -95,6 +95,44 @@ routes:
       - description
       - overview
       - page_summary
+    deterministic_template: false
+    min_evidence: 2
+    min_distinct_entries: 2
+
+  recommendation:
+    allowed_entry_types:
+      - seminar
+      - event
+    allowed_chunk_types:
+      - field_chunk
+      - entry_overview_chunk
+    preferred_fields:
+      - who_should_attend
+      - course_objectives
+      - course_contents
+      - description
+      - overview
+    deterministic_template: false
+    min_evidence: 2
+    min_distinct_entries: 2
+
+  multi_page_lookup:
+    allowed_entry_types:
+      - knowledge
+      - seminar
+      - event
+      - index
+    allowed_chunk_types:
+      - knowledge_table_chunk
+      - field_chunk
+      - entry_overview_chunk
+      - index_lookup_chunk
+    preferred_fields:
+      - page_summary
+      - knowledge_topic
+      - overview
+      - course_description
+      - keyword
     deterministic_template: false
     min_evidence: 2
     min_distinct_entries: 2

@@ -13,7 +13,15 @@ from src.eval.answer_eval import evaluate_answers
 from src.eval.extraction_eval import evaluate_extraction
 from src.eval.parse_eval import evaluate_parse
 from src.eval.retrieval_eval import evaluate_retrieval
-from src.eval.reporting import markdown_from_metrics, write_baseline_snapshot, write_detail_csv
+from src.eval.reporting import (
+    contains_korean,
+    markdown_from_metrics,
+    write_baseline_snapshot,
+    write_detail_csv,
+    write_filtered_detail_csv,
+    write_retrieval_slice_markdown,
+    write_reranker_ablation,
+)
 from src.ingest.abbreviation_extractor import extract_abbreviations
 from src.ingest.calendar_extractor import extract_calendar_entries
 from src.ingest.entry_extractor import build_extraction_quality_report, extract_entries
@@ -246,8 +254,8 @@ def cmd_eval(args: argparse.Namespace) -> int:
 
     service = QueryService(ROOT, ctx.config)
 
-    def retrieve(question: str) -> list[dict]:
-        return service.retrieve(question)["ranked_hits"]
+    def retrieve(question: str) -> dict:
+        return service.retrieve(question)
 
     def answer_query(question: str) -> dict:
         trace = service.retrieve(question)
@@ -271,8 +279,14 @@ def cmd_eval(args: argparse.Namespace) -> int:
     citation_report_path = ctx.output_path("citation_report.md")
     grounding_report_path = ctx.output_path("grounding_report.md")
     retrieval_details_path = ctx.output_path("retrieval_details.csv")
+    retrieval_top1_details_path = ctx.output_path("retrieval_top1_details.csv")
+    retrieval_top3_details_path = ctx.output_path("retrieval_top3_details.csv")
     citation_details_path = ctx.output_path("citation_details.csv")
     grounding_details_path = ctx.output_path("grounding_details.csv")
+    korean_query_eval_path = ctx.output_path("korean_query_eval.md")
+    multi_page_eval_path = ctx.output_path("multi_page_eval.md")
+    recommendation_eval_path = ctx.output_path("recommendation_eval.md")
+    reranker_ablation_path = ctx.output_path("reranker_ablation.md")
     error_analysis_path = ctx.output_path("error_analysis.csv")
     failure_cases_path = ctx.output_path("failure_cases.jsonl")
 
@@ -285,8 +299,20 @@ def cmd_eval(args: argparse.Namespace) -> int:
     write_text(citation_report_path, markdown_from_metrics("Citation Report", citation_report_metrics))
     write_text(grounding_report_path, markdown_from_metrics("Grounding Report", grounding_report_metrics))
     write_detail_csv(retrieval_details_path, retrieval_details + adversarial_retrieval_details)
+    write_filtered_detail_csv(retrieval_top1_details_path, retrieval_details + adversarial_retrieval_details, "top1_hit", True)
+    write_filtered_detail_csv(retrieval_top3_details_path, retrieval_details + adversarial_retrieval_details, "top3_hit", True)
     write_detail_csv(citation_details_path, answer_details)
     write_detail_csv(grounding_details_path, answer_details + adversarial_answer_details)
+
+    all_retrieval_rows = retrieval_details + adversarial_retrieval_details
+    korean_rows = [row for row in all_retrieval_rows if contains_korean(row.get("question"))]
+    multi_page_rows = [row for row in all_retrieval_rows if row.get("question_type") == "multi_page_lookup"]
+    recommendation_rows = [row for row in all_retrieval_rows if row.get("question_type") == "recommendation"]
+    write_retrieval_slice_markdown(korean_query_eval_path, "Korean Query Eval", korean_rows)
+    write_retrieval_slice_markdown(multi_page_eval_path, "Multi Page Eval", multi_page_rows)
+    write_retrieval_slice_markdown(recommendation_eval_path, "Recommendation Eval", recommendation_rows)
+    write_reranker_ablation(reranker_ablation_path, all_retrieval_rows)
+
     write_text(error_analysis_path, "metric,value\n" + "\n".join(f"{key},{value}" for key, value in metrics.items()) + "\n")
     failures = [
         {"type": "GATE_MISS", "metric": key, "value": value}
@@ -312,8 +338,14 @@ def cmd_eval(args: argparse.Namespace) -> int:
             citation_report_path,
             grounding_report_path,
             retrieval_details_path,
+            retrieval_top1_details_path,
+            retrieval_top3_details_path,
             citation_details_path,
             grounding_details_path,
+            korean_query_eval_path,
+            multi_page_eval_path,
+            recommendation_eval_path,
+            reranker_ablation_path,
             error_analysis_path,
             failure_cases_path,
             *baseline_artifacts,

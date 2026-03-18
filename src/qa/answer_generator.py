@@ -12,7 +12,9 @@ FIELD_PRIORITY_BY_ROUTE = {
     "seminar_lookup": ["course_description", "course_objectives", "course_contents", "overview"],
     "event_lookup": ["description", "overview"],
     "calendar_lookup": ["course_description", "description", "overview", "schedule"],
-    "compare_or_recommend": ["course_description", "course_contents", "description", "overview"],
+    "compare": ["course_description", "course_contents", "description", "overview"],
+    "recommendation": ["who_should_attend", "course_objectives", "course_contents", "overview"],
+    "multi_page_lookup": ["page_summary", "knowledge_topic", "overview", "course_description"],
     "relationship_query": ["page_summary", "description", "course_description", "overview"],
     "fallback_general": ["overview", "course_description", "page_summary", "description"],
 }
@@ -97,7 +99,7 @@ def select_evidence(route: str, candidates: list[dict], limit: int = 3, route_po
         dedupe_key = (item.get("chunk_id"), item.get("title"), item.get("pdf_page"), item.get("field_name"))
         if dedupe_key in seen:
             continue
-        if route == "compare_or_recommend" and len(seen_entries) < min_distinct_entries:
+        if route in {"compare", "recommendation"} and len(seen_entries) < min_distinct_entries:
             entry_id = item.get("entry_id")
             if entry_id and entry_id in seen_entries and len(ranked) > len(selected):
                 continue
@@ -135,6 +137,7 @@ def _abbreviation_answer(query: str, route: str, selected: list[dict]) -> dict:
 
 
 def build_grounded_answer(query: str, route: str, candidates: Iterable[dict], route_policy: dict | None = None) -> dict:
+    route = "compare" if route == "compare_or_recommend" else route
     ranked = list(candidates)
     if not ranked:
         return {
@@ -172,9 +175,9 @@ def build_grounded_answer(query: str, route: str, candidates: Iterable[dict], ro
     multi_page_used = len({item.get("pdf_page") for item in selected}) > 1
 
     cautious_answer = None
-    if route == "compare_or_recommend":
+    if route in {"compare", "recommendation"}:
         if evidence_count < min_evidence or len(distinct_entries) < min_distinct_entries:
-            if any(token in query for token in ["추천", "recommend"]):
+            if route == "recommendation" or any(token in query for token in ["추천", "recommend"]):
                 cautious_answer = "추천 가능하지만 문서 근거가 충분하지 않음"
             else:
                 cautious_answer = "비교를 위한 문서 근거가 충분하지 않음"
@@ -198,7 +201,11 @@ def build_grounded_answer(query: str, route: str, candidates: Iterable[dict], ro
         for item in selected
     ]
     bullet_lines = [f"- {format_citation(item)}" for item in selected]
-    if route == "compare_or_recommend" and len(selected) >= 2 and not cautious_answer:
+    if route == "multi_page_lookup" and len(selected) >= 2 and not cautious_answer:
+        summary_text = "관련 페이지: " + ", ".join(
+            f"{item.get('title', 'Untitled')} (p.{item.get('pdf_page')})" for item in selected[:3]
+        )
+    elif route in {"compare", "recommendation"} and len(selected) >= 2 and not cautious_answer:
         summary_text = " / ".join(item.get("title", "Untitled") for item in selected[:2])
     elif cautious_answer:
         summary_text = cautious_answer
