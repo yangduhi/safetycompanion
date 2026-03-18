@@ -6,11 +6,11 @@ from typing import Any
 import yaml
 
 from src.common.config import LoadedConfig
+from src.common.paths import ProjectPaths
 
 
 def load_route_policy(root: Path, config: LoadedConfig) -> dict[str, Any]:
-    rel_path = config.get("paths", "route_field_priority", default="configs/route_field_priority.yaml")
-    path = root / rel_path
+    path = ProjectPaths(root, config).route_policy_path
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return data.get("routes", {})
 

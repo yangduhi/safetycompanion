@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from src.common.config import LoadedConfig
+from src.common.paths import ProjectPaths
 from src.common.runtime import ensure_dir, generate_run_id, now_utc_iso, sha256_file, write_json
 
 
@@ -19,28 +20,40 @@ class RunContext:
 
     @classmethod
     def create(cls, root: Path, config: LoadedConfig, pdf_override: str | None = None) -> "RunContext":
-        pdf_path = root / (pdf_override or config.get("document", "pdf_path"))
+        project_paths = ProjectPaths(root, config)
+        pdf_path = project_paths.document_pdf(pdf_override)
         source_hash = sha256_file(pdf_path)
         run_id = generate_run_id(source_hash)
-        output_root = root / config.get("runtime", "output_root", default="outputs")
+        output_root = project_paths.output_root
         output_dir = ensure_dir(output_root / run_id)
         return cls(root=root, config=config, pdf_path=pdf_path, source_hash=source_hash, run_id=run_id, output_dir=output_dir)
 
+    @property
+    def paths(self) -> ProjectPaths:
+        return ProjectPaths(self.root, self.config)
+
     def path_from_config(self, *keys: str) -> Path:
-        rel = self.config.get("paths", *keys)
-        if rel is None:
-            raise KeyError(f"Missing config path for keys={keys!r}")
-        return self.root / rel
+        return self.paths.path_from_config(*keys)
 
     def output_path(self, relative: str) -> Path:
         return self.output_dir / relative
 
+    def read_jsonl(self, *keys: str) -> list[dict[str, Any]]:
+        from src.common.runtime import read_jsonl
+
+        return read_jsonl(self.path_from_config(*keys))
+
+    def _display_path(self, path: Path) -> str:
+        if path.is_relative_to(self.root):
+            return str(path.relative_to(self.root))
+        return str(path)
+
     def init_run_manifest(self) -> dict[str, Any]:
         return {
             "run_id": self.run_id,
-            "source_file": str(self.pdf_path.relative_to(self.root)),
+            "source_file": self._display_path(self.pdf_path),
             "source_hash": self.source_hash,
-            "config_file": str(self.config.path.relative_to(self.root)),
+            "config_file": self._display_path(self.config.path),
             "config_hash": self.config.hash,
             "git_commit": None,
             "started_at": now_utc_iso(),
