@@ -40,11 +40,15 @@ def dummy_group_score(item: dict, query_profile: dict) -> tuple[float, dict]:
             features["dummy_landscape_match"] = True
 
     if "dummy | crash test" in section or "dummy & crash" in section:
-        score += 0.35
+        score += 0.8
         features["section_dummy_boost"] = True
 
+    if any(token in f"{title} {text}" for token in ["current dummy landscape", "dummy landscape", "dummies", "calibration"]):
+        score += 0.5
+        features["dummy_page_phrase_boost"] = True
+
     if "ncap-tests" in title or "ncap" in title:
-        score -= 0.75
+        score -= 1.2
         features["ncap_intrusion_penalty"] = True
 
     role = assign_page_role(item, query_profile)

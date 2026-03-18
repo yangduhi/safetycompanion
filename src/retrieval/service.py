@@ -47,6 +47,7 @@ class QueryService:
     def _anchor_hits(self, query_profile: dict) -> list[dict]:
         anchors = [anchor for anchor in query_profile.get("exact_anchors", []) if anchor]
         title_aliases = [alias for alias in query_profile.get("alias_expansions", []) if alias]
+        dummy_clusters = set(query_profile.get("dummy_anchor_clusters", []))
         if not anchors and not title_aliases:
             return []
         hits: list[dict] = []
@@ -73,6 +74,14 @@ class QueryService:
             seen.add(chunk_id)
             row = dict(chunk)
             row["score"] = max(float(row.get("score", 0.0)), 2.4)
+            if dummy_clusters:
+                title_lower = str(chunk.get("title", "")).lower()
+                if "thor" in title_lower:
+                    row["score"] += 0.5
+                if "hiii" in title_lower or "hybrid iii" in title_lower:
+                    row["score"] += 0.45
+                if "atd" in title_lower:
+                    row["score"] += 0.45
             row["anchor_hit"] = True
             hits.append(row)
         return hits
@@ -277,12 +286,28 @@ class QueryService:
             allowed_entry_types = {"knowledge", "index"}
         if route == "recommendation" and "measurement" in normalized_query:
             allowed_entry_types = {"seminar"}
+        dummy_clusters = set((query_profile or {}).get("dummy_anchor_clusters", []))
+        dummy_title_terms = ["dummy", "thor", "hiii", "hybrid iii", "atd", "worldsid", "sid-iis", "calibration", "landscape"]
+        if route == "multi_page_lookup" and dummy_clusters:
+            allowed_entry_types = {"knowledge", "seminar", "event"}
         filtered: list[dict] = []
         for item in candidates:
             entry_type = item.get("entry_type")
             chunk_type = item.get("chunk_type")
             entry_ok = not allowed_entry_types or entry_type in allowed_entry_types
             chunk_ok = not allowed_chunk_types or chunk_type in allowed_chunk_types
+            if route == "multi_page_lookup" and dummy_clusters:
+                title_haystack = f"{item.get('title', '')}".lower()
+                section_haystack = f"{item.get('section_l1', '')}".lower()
+                title_hit = any(term in title_haystack for term in dummy_title_terms)
+                section_knowledge_hit = (
+                    entry_type == "knowledge"
+                    and "dummy" in section_haystack
+                    and "DUMMY_LANDSCAPE_CLUSTER" in dummy_clusters
+                )
+                dummy_ok = title_hit or section_knowledge_hit
+                if not dummy_ok:
+                    continue
             if entry_ok and chunk_ok:
                 filtered.append(item)
         if filtered:
