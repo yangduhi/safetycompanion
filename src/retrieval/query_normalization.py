@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from src.graph.catalog import detect_query_topics, extract_dummy_families, extract_organizations, extract_standards
+from src.graph.catalog import NCAP_ALIASES, detect_query_topics, extract_dummy_families, extract_organizations, extract_standards
 
 
 KOREAN_EXPANSIONS = {
@@ -260,6 +260,19 @@ def detect_graph_relation_class(query: str, normalized_query: str, exact_anchors
     return None
 
 
+def detect_standard_entity_target(query: str, normalized_query: str) -> str | None:
+    lowered = f"{query} {normalized_query}".lower()
+    matches: list[tuple[int, str]] = []
+    for canonical, aliases in NCAP_ALIASES.items():
+        alias_match = max((len(alias) for alias in aliases if alias in lowered), default=0)
+        if alias_match:
+            matches.append((alias_match, canonical))
+    if not matches:
+        return None
+    matches.sort(reverse=True)
+    return matches[0][1]
+
+
 def build_query_profile(query: str) -> dict:
     collapsed = collapse_spaced_acronyms(query)
     normalized_anchors = normalize_exact_anchors(collapsed)
@@ -282,6 +295,8 @@ def build_query_profile(query: str) -> dict:
     dummy_anchor_clusters = extract_dummy_anchor_clusters(alias_query)
     dummy_query_mode = infer_dummy_query_mode(alias_query, dummy_anchor_clusters)
     dummy_training_hint = any(token in alias_query.lower() for token in ["training", "seminar", "course", "교육", "세미나", "과정", "강의"])
+    standard_targets = sorted(extract_standards(bilingual_query))
+    standard_entity_target = detect_standard_entity_target(query, bilingual_query)
     if not multi_page_hint and dummy_anchor_clusters and (strong_grouping_request_hint or related_page_hint):
         multi_page_hint = True
     if not multi_page_hint and len(dummy_anchor_clusters) >= 2:
@@ -301,6 +316,8 @@ def build_query_profile(query: str) -> dict:
         "event_hint": is_event_hint(bilingual_query),
         "relationship_hint": is_relationship_hint(query, bilingual_query, exact_anchors),
         "graph_relation_class": detect_graph_relation_class(query, bilingual_query, exact_anchors),
+        "standard_targets": standard_targets,
+        "standard_entity_target": standard_entity_target,
         "exact_anchors": exact_anchors,
         "dummy_anchor_hints": dummy_anchor_hints,
         "dummy_anchor_clusters": dummy_anchor_clusters,

@@ -24,7 +24,8 @@ def build_parser() -> argparse.ArgumentParser:
     build_indexes_parser.set_defaults(func=build_indexes.run)
 
     query_parser = subparsers.add_parser("query")
-    query_parser.add_argument("question")
+    query_parser.add_argument("question", nargs="?")
+    query_parser.add_argument("--question-file", default=None)
     query_parser.add_argument("--config", default=str(default_config_path()))
     query_parser.set_defaults(func=query.run)
 
