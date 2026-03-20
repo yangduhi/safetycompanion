@@ -1,0 +1,8 @@
+pdf_page,decision,reason
+60,use_odl_local,"More specific title and cleaner protocol-level field boundaries"
+61,needs_more_eval,"Better title specificity, but some key-point rows collapse together"
+62,use_odl_local,"Clearer breakdown of assessment categories and year bands"
+84,use_odl_local,"Table headers and dummy-region structure are more legible"
+85,needs_more_eval,"Passenger/dummy labels improve, but symbol noise and row collapse remain"
+129,use_odl_local,"Crash-direction grouping and dummy-family layout are more coherent"
+137,use_odl_local,"Column separation and calibration table readability improve"

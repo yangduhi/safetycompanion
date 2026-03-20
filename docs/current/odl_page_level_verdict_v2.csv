@@ -1,0 +1,8 @@
+pdf_page,verdict,confidence,reason
+60,use_odl_local,high,"Title specificity and protocol-level field boundaries improve"
+61,needs_more_eval,medium,"Title improves, but key-point rows still collapse too aggressively"
+62,use_odl_local,high,"Assessment categories and year bands separate more cleanly"
+84,use_odl_local,high,"Dummy/region/points/criteria table shape is clearer"
+85,needs_more_eval,medium,"Passenger/dummy labeling improves, but symbol noise and merged rows remain"
+129,use_odl_local,high,"Dummy landscape grouping becomes more coherent by crash direction"
+137,use_odl_local,high,"Weight/height/calibration columns are materially clearer"
