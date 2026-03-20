@@ -1,0 +1,16 @@
+extends: prod.yaml
+
+parse:
+  auxiliary:
+    enabled: true
+    engine: opendataloader
+    command: opendataloader-pdf
+    mode: local
+    page_types:
+      - knowledge
+    min_word_count: 80
+    table_method: cluster
+    reading_order: xycut
+    use_struct_tree: false
+    strict: false
+    quiet: true

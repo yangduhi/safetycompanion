@@ -14,9 +14,14 @@ from src.workflows.result import WorkflowResult
 
 def run_ingest(ctx: RunContext) -> WorkflowResult:
     parse_tmp = ensure_dir(ctx.root / "tmp" / "pdfs")
-    page_manifest, page_blocks = build_page_records(ctx.pdf_path, ctx.config.get("document", "id"), parse_tmp)
+    page_manifest, page_blocks, parse_diagnostics = build_page_records(
+        ctx.pdf_path,
+        ctx.config.get("document", "id"),
+        parse_tmp,
+        ctx.config,
+    )
     source_page_map = build_source_page_map(page_manifest)
-    parse_report = build_parse_report(page_manifest)
+    parse_report = build_parse_report(page_manifest, diagnostics=parse_diagnostics)
 
     entries = extract_entries(page_manifest)
     abbreviations = extract_abbreviations(page_manifest)

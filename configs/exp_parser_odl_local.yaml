@@ -1,0 +1,5 @@
+extends: exp_parser_odl.yaml
+
+parse:
+  auxiliary:
+    mode: local

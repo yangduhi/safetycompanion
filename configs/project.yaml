@@ -44,6 +44,24 @@ parse:
   prefer_pdftotext: true
   low_text_word_threshold: 25
   review_queue_max_examples: 50
+  auxiliary:
+    enabled: false
+    engine: opendataloader
+    mode: local
+    command: opendataloader-pdf
+    page_types:
+      - knowledge
+    min_word_count: 80
+    table_method: cluster
+    reading_order: xycut
+    use_struct_tree: false
+    content_safety_off: []
+    quiet: true
+    strict: false
+    hybrid_backend: docling-fast
+    hybrid_mode: auto
+    hybrid_timeout_ms: 30000
+    hybrid_fallback: false
 
 retrieval:
   dense_top_k: 8
