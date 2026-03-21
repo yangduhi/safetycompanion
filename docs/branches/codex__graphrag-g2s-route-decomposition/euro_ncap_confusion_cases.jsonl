@@ -1,0 +1,3 @@
+{"case":"G004","issue":"remaining_failure","top_result_page":40,"top_result_title":"Euro NCAP UpDate 2026 Get ready for Euro NCAP‘s latest rating revision!","explanation":"Entity lane now prefers a direct Euro NCAP page, but the current hard set still expects broader supporting entries."}
+{"case":"G004","issue":"supporting_page_competition","page":46,"title":"Euro NCAP - Compact Course Description Course Contents","explanation":"Direct-supporting seminar entry remains a strong alternative representative."}
+{"case":"G004","issue":"broad_overview_demoted","page":38,"title":"SafetyWissen.com Wissen NCAP-Tests in Europe, America and Australia","explanation":"Broad NCAP overview is no longer the top representative, which is an improvement over earlier behavior."}

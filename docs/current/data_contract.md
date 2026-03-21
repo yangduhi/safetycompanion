@@ -49,6 +49,7 @@
 - 모든 페이지는 `page_type`을 가져야 한다.
 - retrieval 대상이 아닌 페이지도 manifest에는 포함된다.
 - `is_primary_corpus`는 기본 검색 코퍼스 포함 여부를 나타낸다.
+- 선택 확장 필드로 `parser_engine`, `parser_mode`, `primary_parser_engine`를 둘 수 있다.
 
 ## 4. Entry Record
 
@@ -174,3 +175,23 @@ graph 실험 config에서만 아래 산출물을 사용한다.
 
 - graph edge는 반드시 provenance를 가져야 한다.
 - graph 결과는 최종 답변 전에 entry/page evidence로 backfill되어야 한다.
+
+## 10. Auxiliary Parser Extension Fields
+
+보조 파서 실험이 켜진 경우 아래 필드가 manifest/block에 추가될 수 있다.
+
+### Page Manifest 추가 필드
+
+- `parser_engine`
+- `parser_mode`
+- `primary_parser_engine`
+
+### Page Block 추가 필드
+
+- `parser_engine`
+
+설명:
+
+- `parser_engine`은 실제 페이지 텍스트가 어떤 parser에서 왔는지 나타낸다.
+- `parser_mode`는 `local`, `hybrid`, `primary` 같은 실행 모드를 나타낸다.
+- `primary_parser_engine`은 보조 parser가 원래 결과를 덮어쓴 경우 기준 parser를 보존한다.
