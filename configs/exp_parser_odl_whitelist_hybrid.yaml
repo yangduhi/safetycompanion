@@ -1,0 +1,12 @@
+extends: exp_parser_odl_hybrid.yaml
+
+parse:
+  auxiliary:
+    page_numbers:
+      - 60
+      - 61
+      - 62
+      - 84
+      - 85
+      - 129
+      - 137

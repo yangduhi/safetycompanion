@@ -1,0 +1,7 @@
+extends: exp_parser_odl.yaml
+
+parse:
+  auxiliary:
+    mode: hybrid
+    hybrid_backend: docling-fast
+    hybrid_mode: auto
