@@ -16,7 +16,7 @@ FIELD_PRIORITY_BY_ROUTE = {
     "compare": ["course_description", "course_contents", "description", "overview"],
     "recommendation": ["who_should_attend", "course_objectives", "course_contents", "overview"],
     "multi_page_lookup": ["page_summary", "knowledge_topic", "overview", "course_description"],
-    "entity_relation_lookup": ["knowledge_topic", "page_summary", "description", "course_description", "overview"],
+    "entity_relation_lookup": ["description", "overview", "page_summary", "knowledge_topic", "course_description"],
     "topic_cluster_lookup": ["overview", "course_description", "description", "page_summary", "knowledge_topic"],
     "relationship_query": ["page_summary", "description", "course_description", "overview"],
     "fallback_general": ["overview", "course_description", "page_summary", "description"],
@@ -82,6 +82,11 @@ def _confidence(item: dict) -> float:
     return round(score / 3.0, 4)
 
 
+def _entity_tier_rank(item: dict) -> int:
+    value = item.get("entity_relation_tier_rank")
+    return 99 if value is None else int(value)
+
+
 def select_evidence(route: str, candidates: list[dict], limit: int = 3, route_policy: dict | None = None) -> list[dict]:
     if not candidates:
         return []
@@ -89,8 +94,9 @@ def select_evidence(route: str, candidates: list[dict], limit: int = 3, route_po
     ranked = sorted(
         candidates,
         key=lambda item: (
-            _field_priority(route, item.get("field_name"), route_policy=route_policy),
+            _entity_tier_rank(item) if route == "entity_relation_lookup" else 99,
             -float(item.get("rerank_score", item.get("fused_score", item.get("score", 0.0)))),
+            _field_priority(route, item.get("field_name"), route_policy=route_policy),
         ),
     )
     selected: list[dict] = []
@@ -355,6 +361,73 @@ def _relationship_answer(query: str, route: str, selected: list[dict]) -> dict:
     }
 
 
+def _entity_relation_answer(query: str, route: str, selected: list[dict]) -> dict:
+    if not selected:
+        return {
+            "query": query,
+            "route": route,
+            "answer": "문서상 확인 불가",
+            "evidence": [],
+            "selected_field": None,
+            "evidence_count": 0,
+            "span_present": False,
+            "template_answer_used": True,
+            "multi_page_used": False,
+            "route_name": route,
+            "graph_backfill_used": False,
+        }
+
+    representative = next((item for item in selected if _entity_tier_rank(item) == 0), selected[0])
+    supporting = [item for item in selected if item.get("entry_id") != representative.get("entry_id")][:2]
+    supporting_lines = [f"- {item.get('title', 'Untitled')} -> {format_citation(item)}" for item in supporting] or ["- supporting evidence not selected"]
+    answer = "\n".join(
+        [
+            f"질의 경로: {route}",
+            "",
+            f"대표 엔트리: {representative.get('title', 'Untitled')} -> {format_citation(representative)}",
+            "",
+            "관련 참고 엔트리:",
+            *supporting_lines,
+        ]
+    )
+    ordered = [representative, *supporting]
+    evidence = [
+        {
+            "title": item.get("title"),
+            "pdf_page": item.get("pdf_page"),
+            "printed_page": item.get("printed_page"),
+            "chunk_id": item.get("chunk_id"),
+            "field_name": item.get("field_name"),
+            "text": item.get("text", "")[:400],
+            "evidence_text": item.get("evidence_text", ""),
+            "evidence_field": item.get("evidence_field"),
+            "evidence_start": item.get("evidence_start"),
+            "evidence_end": item.get("evidence_end"),
+            "evidence_page": item.get("evidence_page"),
+            "evidence_confidence": item.get("evidence_confidence"),
+            "entry_id": item.get("entry_id"),
+            "graph_match_names": item.get("graph_match_names", []),
+            "graph_edge_types": item.get("graph_edge_types", []),
+            "entity_relation_tier": item.get("entity_relation_tier"),
+            "entity_relation_role": item.get("entity_relation_role"),
+        }
+        for item in ordered
+    ]
+    return {
+        "query": query,
+        "route": route,
+        "answer": answer,
+        "evidence": evidence,
+        "selected_field": representative.get("field_name"),
+        "evidence_count": len(evidence),
+        "span_present": all(item.get("evidence_text") for item in evidence),
+        "template_answer_used": True,
+        "multi_page_used": len({item.get('pdf_page') for item in evidence}) > 1,
+        "route_name": route,
+        "graph_backfill_used": True,
+    }
+
+
 def _topic_cluster_answer(query: str, route: str, selected: list[dict]) -> dict:
     if not selected:
         return {
@@ -452,7 +525,9 @@ def build_grounded_answer(query: str, route: str, candidates: Iterable[dict], ro
         return _compare_answer(query, route, selected)
     if route == "multi_page_lookup":
         return _multi_page_answer(query, route, selected)
-    if route in {"relationship_query", "entity_relation_lookup"}:
+    if route == "entity_relation_lookup":
+        return _entity_relation_answer(query, route, selected)
+    if route == "relationship_query":
         return _relationship_answer(query, route, selected)
     if route == "topic_cluster_lookup":
         return _topic_cluster_answer(query, route, selected)

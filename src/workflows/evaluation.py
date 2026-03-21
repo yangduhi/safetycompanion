@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.common.pipeline import RunContext
-from src.common.runtime import write_jsonl, write_text
+from src.common.runtime import read_jsonl, write_jsonl, write_text
 from src.eval.answer_eval import evaluate_answers
 from src.eval.error_taxonomy import build_error_taxonomy, error_taxonomy_markdown
 from src.eval.extraction_eval import evaluate_extraction
@@ -84,6 +84,9 @@ def run_evaluation(ctx: RunContext, baseline_label: str | None = None) -> Workfl
     graph_failure_cases_path = ctx.output_path("graph_failure_cases.jsonl")
     graph_failure_cases_v2_path = ctx.output_path("graph_failure_cases_v2.jsonl")
     graph_failure_cases_v3_path = ctx.output_path("graph_failure_cases_v3.jsonl")
+    graph_eval_entity_relation_v5_path = ctx.output_path("graph_eval_entity_relation_v5.md")
+    euro_ncap_confusion_report_v2_path = ctx.output_path("euro_ncap_confusion_report_v2.md")
+    euro_ncap_route_trace_path = ctx.output_path("euro_ncap_route_trace.csv")
     if graph_enabled and graph_eval_questions:
         graph_retrieval_metrics, graph_retrieval_details = evaluate_retrieval(graph_eval_questions, retrieve)
         graph_answer_metrics, graph_answer_details = evaluate_answers(graph_eval_questions, answer_query)
@@ -118,6 +121,38 @@ def run_evaluation(ctx: RunContext, baseline_label: str | None = None) -> Workfl
             graph_eval_standard_relation_path,
             graph_eval_markdown(compute_graph_metrics([row for row in graph_rows if row.get("query_type") == "standard_topic_relation"])),
         )
+
+        euro_ncap_suite_path = ctx.root / "data" / "eval" / "euro_ncap_micro_suite.jsonl"
+        if euro_ncap_suite_path.exists():
+            euro_ncap_rows_raw = read_jsonl(euro_ncap_suite_path)
+            euro_ncap_questions = [
+                {
+                    **row,
+                    "question": row.get("question") or row.get("query"),
+                    "question_type": row.get("question_type") or row.get("query_type"),
+                    "expected_pdf_pages": row.get("expected_pdf_pages") or row.get("expected_pages") or [],
+                    "expected_titles": row.get("expected_titles") or [],
+                }
+                for row in euro_ncap_rows_raw
+            ]
+            euro_ncap_retrieval_metrics, euro_ncap_retrieval_details = evaluate_retrieval(euro_ncap_questions, retrieve)
+            euro_ncap_answer_metrics, euro_ncap_answer_details = evaluate_answers(euro_ncap_questions, answer_query)
+            euro_ncap_graph_rows = merge_graph_rows(euro_ncap_retrieval_details, euro_ncap_answer_details)
+            euro_ncap_metrics = compute_graph_metrics(euro_ncap_graph_rows)
+            write_text(graph_eval_entity_relation_v5_path, graph_eval_markdown(euro_ncap_metrics))
+            write_detail_csv(euro_ncap_route_trace_path, euro_ncap_graph_rows)
+            euro_ncap_failures = build_graph_failure_rows(euro_ncap_graph_rows)
+            if euro_ncap_failures:
+                lines = ["# Euro NCAP Confusion Report V2", "", "## Failures"]
+                for row in euro_ncap_failures:
+                    lines.append(f"- {row.get('qid')}: {row.get('graph_failure_type')} -> {row.get('top_result_title')}")
+            else:
+                lines = ["# Euro NCAP Confusion Report V2", "", "- no failures"]
+            write_text(euro_ncap_confusion_report_v2_path, "\n".join(lines) + "\n")
+        else:
+            graph_eval_entity_relation_v5_path = None
+            euro_ncap_confusion_report_v2_path = None
+            euro_ncap_route_trace_path = None
     else:
         graph_eval_path = None
         graph_eval_entity_relation_path = None
@@ -130,6 +165,9 @@ def run_evaluation(ctx: RunContext, baseline_label: str | None = None) -> Workfl
         graph_failure_cases_path = None
         graph_failure_cases_v2_path = None
         graph_failure_cases_v3_path = None
+        graph_eval_entity_relation_v5_path = None
+        euro_ncap_confusion_report_v2_path = None
+        euro_ncap_route_trace_path = None
 
     summary_path = ctx.output_path("eval_summary.md")
     retrieval_report_path = ctx.output_path("retrieval_report.md")
